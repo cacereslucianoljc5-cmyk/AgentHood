@@ -134,11 +134,33 @@ export async function GET(req: Request) {
     }
   }
 
-  // Fallback: icono directo del CDN de DexScreener (lo que muestra su screener
-  // para tokens recién lanzados). Si no existe, el cliente cae al avatar.
-  for (const t of tokens) {
-    if (!t.imageUrl && t.address) {
-      t.imageUrl = `https://dd.dexscreener.com/ds-data/tokens/${NET}/${t.address}.png`;
+  // DIAGNÓSTICO temporal: probar fuentes de imagen para 1 token que falta.
+  if (missing[0]) {
+    const addr = missing[0];
+    try {
+      const og = await fetch(`https://cdn.dexscreener.com/token-images/og/${NET}/${addr}`);
+      console.log(`diag og status=${og.status} ctype=${og.headers.get("content-type")}`);
+    } catch (e) {
+      console.log("diag og err", String(e));
+    }
+    try {
+      const gm = await fetch(`${GT}/networks/${NET}/tokens/multi/${addr}`, {
+        headers: { Accept: "application/json" },
+      });
+      const j: any = await gm.json().catch(() => null);
+      const im = j?.data?.[0]?.attributes?.image_url ?? j?.data?.attributes?.image_url;
+      console.log(`diag gtmulti status=${gm.status} image=${im}`);
+    } catch (e) {
+      console.log("diag gtmulti err", String(e));
+    }
+    try {
+      const gi = await fetch(`${GT}/networks/${NET}/tokens/${addr}/info`, {
+        headers: { Accept: "application/json" },
+      });
+      const j: any = await gi.json().catch(() => null);
+      console.log(`diag gtinfo status=${gi.status} image=${j?.data?.attributes?.image_url}`);
+    } catch (e) {
+      console.log("diag gtinfo err", String(e));
     }
   }
 
