@@ -40,6 +40,33 @@ async function fetchPage(endpoint: string): Promise<{ pools: any[]; tokens: Map<
   return { pools: Array.isArray(json?.data) ? json.data : [], tokens };
 }
 
+// Iconos limpios desde los feeds globales de DexScreener (perfiles y boosts),
+// filtrados a nuestra red. Devuelve mapa address(minúsculas) -> icon URL.
+async function fetchDexIconFeeds(): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const feeds = [
+    "https://api.dexscreener.com/token-profiles/latest/v1",
+    "https://api.dexscreener.com/token-boosts/top/v1",
+    "https://api.dexscreener.com/token-boosts/latest/v1",
+  ];
+  const results = await Promise.all(
+    feeds.map((u) =>
+      fetch(u, { headers: { Accept: "application/json" }, next: { revalidate: 30 } })
+        .then((r) => (r.ok ? r.json() : []))
+        .catch(() => [])
+    )
+  );
+  for (const arr of results) {
+    for (const it of Array.isArray(arr) ? arr : []) {
+      if (it?.chainId === NET && it?.tokenAddress && it?.icon) {
+        const addr = String(it.tokenAddress).toLowerCase();
+        if (!map.has(addr)) map.set(addr, String(it.icon));
+      }
+    }
+  }
+  return map;
+}
+
 // Rellena imágenes faltantes usando DexScreener (que indexa el icono de los
 // tokens recién lanzados al instante).
 async function fetchDexImages(addresses: string[]): Promise<Map<string, string>> {
@@ -118,21 +145,16 @@ export async function GET(req: Request) {
     });
   }
 
-  // Rellena imágenes faltantes: primero con el campo curado de DexScreener,
-  // y para el resto con su CDN de imágenes OG (responde 200 sin key).
+  // Rellena imágenes faltantes con iconos LIMPIOS de DexScreener, combinando
+  // varias fuentes: pares por dirección + feeds de perfiles/boosts. Lo que no
+  // tenga icono se queda sin imagen y el cliente muestra un avatar de letras.
   const missing = tokens.filter((t) => !t.imageUrl && t.address).map((t) => t.address);
   if (missing.length) {
-    const imgMap = await fetchDexImages(missing);
+    const [byAddr, feeds] = await Promise.all([fetchDexImages(missing), fetchDexIconFeeds()]);
     for (const t of tokens) {
-      if (!t.imageUrl && t.address) {
-        const im = imgMap.get(t.address.toLowerCase());
-        if (im) t.imageUrl = im;
-      }
-    }
-  }
-  for (const t of tokens) {
-    if (!t.imageUrl && t.address) {
-      t.imageUrl = `https://cdn.dexscreener.com/token-images/og/${NET}/${t.address}`;
+      if (t.imageUrl || !t.address) continue;
+      const key = t.address.toLowerCase();
+      t.imageUrl = byAddr.get(key) || feeds.get(key) || "";
     }
   }
 
