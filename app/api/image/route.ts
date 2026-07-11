@@ -4,69 +4,73 @@ import { checkAndConsume, getClientIp, LIMITS } from "@/lib/ratelimit";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-// Free "seed"-tier token (register at auth.pollinations.ai) enabling the
-// kontext image-to-image model. Set as POLLINATIONS_TOKEN in Vercel.
-const TOKEN = process.env.POLLINATIONS_TOKEN?.trim();
+// Free Google AI Studio key (aistudio.google.com) — Gemini 2.5 Flash Image
+// ("Nano Banana") does real image editing on the free tier (up to 500/day).
+// Set as GEMINI_API_KEY in Vercel.
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY?.trim();
+const GEMINI_MODEL = "gemini-2.5-flash-image";
 
-// Hosts the reference image at a public URL (kontext's `image` param requires
-// one). Tries several anonymous hosts, since some reject datacenter IPs.
-async function uploadReference(file: File): Promise<string> {
-  const buf = Buffer.from(await file.arrayBuffer());
-  const type = file.type || "image/jpeg";
-  const name = "reference.jpg";
-  const blob = () => new Blob([buf], { type });
+type EditedImage = { data: Buffer; mime: string };
 
-  // 1) tmpfiles.org
-  try {
-    const fd = new FormData();
-    fd.append("file", blob(), name);
-    const r = await fetch("https://tmpfiles.org/api/v1/upload", { method: "POST", body: fd });
-    if (r.ok) {
-      const j = (await r.json()) as { data?: { url?: string } };
-      const u = j?.data?.url;
-      if (u) {
-        return u.replace("://tmpfiles.org/", "://tmpfiles.org/dl/").replace(/^http:/, "https:");
-      }
-    }
-    console.error("uploadReference tmpfiles failed", r.status);
-  } catch (e) {
-    console.error("uploadReference tmpfiles error", e);
+// Edits an image with Gemini: sends the image inline (base64) + instruction,
+// returns the edited image bytes. No external file hosting needed.
+async function editWithGemini(
+  instruction: string,
+  buf: Buffer,
+  mime: string
+): Promise<EditedImage> {
+  const body = {
+    contents: [
+      {
+        parts: [
+          {
+            text:
+              `${instruction}. Aplica solo ese cambio y mantén el resto de la imagen ` +
+              `igual: mismo sujeto, estilo, colores, iluminación y composición.`,
+          },
+          { inline_data: { mime_type: mime, data: buf.toString("base64") } },
+        ],
+      },
+    ],
+  };
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!resp.ok) {
+    const detail = await resp.text().catch(() => "");
+    console.error("gemini failed", resp.status, detail.slice(0, 400));
+    throw new Error("gemini " + resp.status);
   }
 
-  // 2) 0x0.st
-  try {
-    const fd = new FormData();
-    fd.append("file", blob(), name);
-    const r = await fetch("https://0x0.st", {
-      method: "POST",
-      body: fd,
-      headers: { "User-Agent": "agenthood/1.0 (+https://agent-hood.vercel.app)" },
-    });
-    if (r.ok) {
-      const u = (await r.text()).trim();
-      if (/^https?:\/\//.test(u)) return u;
+  const data = (await resp.json().catch(() => null)) as {
+    candidates?: {
+      content?: {
+        parts?: {
+          inlineData?: { data?: string; mimeType?: string };
+          inline_data?: { data?: string; mime_type?: string };
+        }[];
+      };
+    }[];
+  } | null;
+
+  const parts = data?.candidates?.[0]?.content?.parts || [];
+  for (const p of parts) {
+    const inline = p.inlineData || p.inline_data;
+    const b64 = inline?.data;
+    if (b64) {
+      const outMime =
+        (p.inlineData?.mimeType || p.inline_data?.mime_type) ?? "image/png";
+      return { data: Buffer.from(b64, "base64"), mime: outMime };
     }
-    console.error("uploadReference 0x0 failed", r.status);
-  } catch (e) {
-    console.error("uploadReference 0x0 error", e);
   }
 
-  // 3) catbox.moe (last resort)
-  try {
-    const fd = new FormData();
-    fd.append("reqtype", "fileupload");
-    fd.append("fileToUpload", blob(), name);
-    const r = await fetch("https://catbox.moe/user/api.php", { method: "POST", body: fd });
-    if (r.ok) {
-      const u = (await r.text()).trim();
-      if (/^https?:\/\//.test(u)) return u;
-    }
-    console.error("uploadReference catbox failed", r.status);
-  } catch (e) {
-    console.error("uploadReference catbox error", e);
-  }
-
-  throw new Error("all upload hosts failed");
+  console.error("gemini: no image in response", JSON.stringify(data).slice(0, 400));
+  throw new Error("no image in response");
 }
 
 const SIZES: Record<string, [number, number]> = {
@@ -126,86 +130,42 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "La descripción es demasiado larga" }, { status: 400 });
   }
 
-  const [width, height] = SIZES[ratio] || SIZES.square;
-  const seed = (Date.now() % 1_000_000) + prompt.length;
-
-  // ---------- Image-to-image (real editing) with kontext + token ----------
+  // ---------- Real image editing with Gemini (Nano Banana) ----------
   if (referenceFile) {
-    if (!TOKEN) {
+    if (!GEMINI_API_KEY) {
       return NextResponse.json(
         {
           error:
-            "La edición de imágenes aún no está activada. Falta configurar el token de Pollinations (POLLINATIONS_TOKEN) en Vercel.",
+            "La edición de imágenes aún no está activada. Falta configurar la API key de Gemini (GEMINI_API_KEY) en Vercel.",
         },
         { status: 400 }
       );
     }
 
-    let referenceUrl: string;
-    try {
-      referenceUrl = await uploadReference(referenceFile);
-    } catch (e) {
-      console.error("image route: reference upload failed", e);
-      return NextResponse.json(
-        { error: "No se pudo subir la imagen de referencia. Intenta con otra imagen." },
-        { status: 502 }
-      );
-    }
-
-    const params = new URLSearchParams({
-      width: String(width),
-      height: String(height),
-      seed: String(seed),
-      nologo: "true",
-      model: "kontext",
-      referrer: "agenthood",
-    });
-    params.set("image", referenceUrl);
-    const kontextUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(
-      prompt
-    )}?${params.toString()}`;
-
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 55_000);
     try {
-      const resp = await fetch(kontextUrl, {
-        headers: { Authorization: `Bearer ${TOKEN}` },
-        signal: controller.signal,
-      });
-      if (!resp.ok) {
-        const detail = await resp.text().catch(() => "");
-        console.error("kontext failed", resp.status, detail.slice(0, 300));
-        return NextResponse.json(
-          { error: "El editor de IA no pudo procesar la imagen. Intenta de nuevo." },
-          { status: 502 }
-        );
-      }
-      const ctype = resp.headers.get("content-type") || "";
-      if (!ctype.startsWith("image/")) {
-        const detail = await resp.text().catch(() => "");
-        console.error("kontext non-image response", ctype, detail.slice(0, 300));
-        return NextResponse.json(
-          { error: "El editor de IA no devolvió una imagen. Intenta de nuevo." },
-          { status: 502 }
-        );
-      }
-      const bytes = Buffer.from(await resp.arrayBuffer());
-      return new NextResponse(bytes, {
+      const buf = Buffer.from(await referenceFile.arrayBuffer());
+      const mime = referenceFile.type || "image/jpeg";
+      const edited = await editWithGemini(prompt, buf, mime);
+      return new NextResponse(new Uint8Array(edited.data), {
         status: 200,
-        headers: { "Content-Type": ctype, "Cache-Control": "no-store" },
+        headers: { "Content-Type": edited.mime, "Cache-Control": "no-store" },
       });
     } catch (e) {
-      console.error("kontext request error", e);
+      console.error("image route: gemini edit failed", e);
       return NextResponse.json(
-        { error: "El editor de IA tardó demasiado. Intenta de nuevo." },
-        { status: 504 }
+        { error: "El editor de IA no pudo procesar la imagen. Intenta de nuevo o con otra descripción." },
+        { status: 502 }
       );
     } finally {
       clearTimeout(timeout);
     }
   }
 
-  // ---------- Text-to-image (flux) ----------
+  // ---------- Text-to-image (flux, gratis) ----------
+  const [width, height] = SIZES[ratio] || SIZES.square;
+  const seed = (Date.now() % 1_000_000) + prompt.length;
   const params = new URLSearchParams({
     width: String(width),
     height: String(height),
