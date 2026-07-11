@@ -36,7 +36,12 @@ async function editWithCloudflare(
   if (!resp.ok) {
     const detail = await resp.text().catch(() => "");
     console.error("cloudflare failed", resp.status, detail.slice(0, 400));
-    throw new Error("cloudflare " + resp.status);
+    const err = new Error("cloudflare " + resp.status) as Error & { userMessage?: string };
+    if (/flagged|3030/i.test(detail)) {
+      err.userMessage =
+        "El filtro de contenido de la IA bloqueó esta imagen (suele pasar con armas, violencia o contenido sensible). Prueba con otra imagen o cambia la descripción.";
+    }
+    throw err;
   }
 
   const ctype = resp.headers.get("content-type") || "";
@@ -113,9 +118,6 @@ export async function POST(req: Request) {
 
   // ---------- Image-to-image with Cloudflare Workers AI ----------
   if (referenceFile) {
-    console.log(
-      `cf creds present: account=${Boolean(CF_ACCOUNT_ID)} token=${Boolean(CF_API_TOKEN)}`
-    );
     if (!CF_ACCOUNT_ID || !CF_API_TOKEN) {
       return NextResponse.json(
         {
@@ -138,8 +140,13 @@ export async function POST(req: Request) {
       });
     } catch (e) {
       console.error("image route: cloudflare edit failed", e);
+      const userMessage = (e as { userMessage?: string })?.userMessage;
       return NextResponse.json(
-        { error: "El editor de IA no pudo procesar la imagen. Intenta de nuevo o con otra descripción." },
+        {
+          error:
+            userMessage ||
+            "El editor de IA no pudo procesar la imagen. Intenta de nuevo o con otra descripción.",
+        },
         { status: 502 }
       );
     } finally {
