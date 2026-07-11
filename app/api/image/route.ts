@@ -113,6 +113,9 @@ export async function POST(req: Request) {
 
   // ---------- Image-to-image with Cloudflare Workers AI ----------
   if (referenceFile) {
+    console.log(
+      `cf creds present: account=${Boolean(CF_ACCOUNT_ID)} token=${Boolean(CF_API_TOKEN)}`
+    );
     if (!CF_ACCOUNT_ID || !CF_API_TOKEN) {
       return NextResponse.json(
         {
