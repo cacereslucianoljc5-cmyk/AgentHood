@@ -62,7 +62,6 @@ async function fetchDexImages(addresses: string[]): Promise<Map<string, string>>
       const img = p?.info?.imageUrl;
       if (addr && img && !map.has(addr)) map.set(addr, String(img));
     }
-    console.log(`dexscreener: requested=${addresses.length} pairs=${pairs.length} withImage=${map.size}`);
   } catch (e) {
     console.error("dexscreener error", e);
   }
@@ -119,11 +118,9 @@ export async function GET(req: Request) {
     });
   }
 
-  // Rellena imágenes faltantes con DexScreener.
+  // Rellena imágenes faltantes: primero con el campo curado de DexScreener,
+  // y para el resto con su CDN de imágenes OG (responde 200 sin key).
   const missing = tokens.filter((t) => !t.imageUrl && t.address).map((t) => t.address);
-  console.log(
-    `tokens mode=${mode} total=${tokens.length} withGtImage=${tokens.length - missing.length} missing=${missing.length} sampleAddr=${missing[0] || "-"}`
-  );
   if (missing.length) {
     const imgMap = await fetchDexImages(missing);
     for (const t of tokens) {
@@ -133,34 +130,9 @@ export async function GET(req: Request) {
       }
     }
   }
-
-  // DIAGNÓSTICO temporal: probar fuentes de imagen para 1 token que falta.
-  if (missing[0]) {
-    const addr = missing[0];
-    try {
-      const og = await fetch(`https://cdn.dexscreener.com/token-images/og/${NET}/${addr}`);
-      console.log(`diag og status=${og.status} ctype=${og.headers.get("content-type")}`);
-    } catch (e) {
-      console.log("diag og err", String(e));
-    }
-    try {
-      const gm = await fetch(`${GT}/networks/${NET}/tokens/multi/${addr}`, {
-        headers: { Accept: "application/json" },
-      });
-      const j: any = await gm.json().catch(() => null);
-      const im = j?.data?.[0]?.attributes?.image_url ?? j?.data?.attributes?.image_url;
-      console.log(`diag gtmulti status=${gm.status} image=${im}`);
-    } catch (e) {
-      console.log("diag gtmulti err", String(e));
-    }
-    try {
-      const gi = await fetch(`${GT}/networks/${NET}/tokens/${addr}/info`, {
-        headers: { Accept: "application/json" },
-      });
-      const j: any = await gi.json().catch(() => null);
-      console.log(`diag gtinfo status=${gi.status} image=${j?.data?.attributes?.image_url}`);
-    } catch (e) {
-      console.log("diag gtinfo err", String(e));
+  for (const t of tokens) {
+    if (!t.imageUrl && t.address) {
+      t.imageUrl = `https://cdn.dexscreener.com/token-images/og/${NET}/${t.address}`;
     }
   }
 

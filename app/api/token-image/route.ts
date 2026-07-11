@@ -46,7 +46,6 @@ export async function GET(req: Request) {
   try {
     const r = await fetch(target.toString(), { next: { revalidate: 300 } });
     if (!r.ok) {
-      console.error("token-image upstream", r.status, host);
       return NextResponse.json({ error: "no encontrada" }, { status: 502 });
     }
     const ctype = r.headers.get("content-type") || "image/png";
