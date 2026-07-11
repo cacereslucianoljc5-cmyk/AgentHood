@@ -167,12 +167,35 @@ function ImageTab() {
   const [loading, setLoading] = useState(false);
   const [imgUrl, setImgUrl] = useState("");
   const [error, setError] = useState("");
-  const [refFile, setRefFile] = useState<File | null>(null);
+  const [refFile, setRefFile] = useState<Blob | null>(null);
   const [refPreview, setRefPreview] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const counter = useDailyCounter("image", IMAGE_LIMIT);
 
-  function onPickReference(e: React.ChangeEvent<HTMLInputElement>) {
+  // Shrink the image in the browser before uploading: keeps the payload small
+  // and the vision analysis fast.
+  async function downscaleImage(file: File, maxDim = 1024): Promise<Blob> {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+    const w = Math.max(1, Math.round(bitmap.width * scale));
+    const h = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("no canvas context");
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close?.();
+    return await new Promise<Blob>((resolve, reject) =>
+      canvas.toBlob(
+        (b) => (b ? resolve(b) : reject(new Error("toBlob failed"))),
+        "image/jpeg",
+        0.85
+      )
+    );
+  }
+
+  async function onPickReference(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith("image/")) {
@@ -184,8 +207,15 @@ function ImageTab() {
       return;
     }
     setError("");
-    setRefFile(file);
-    setRefPreview(URL.createObjectURL(file));
+    let blob: Blob = file;
+    try {
+      blob = await downscaleImage(file);
+    } catch {
+      // If canvas processing fails, fall back to the original file.
+    }
+    if (refPreview) URL.revokeObjectURL(refPreview);
+    setRefFile(blob);
+    setRefPreview(URL.createObjectURL(blob));
   }
 
   function clearReference() {
@@ -213,7 +243,7 @@ function ImageTab() {
         const form = new FormData();
         form.append("prompt", text);
         form.append("ratio", ratio);
-        form.append("image", refFile);
+        form.append("image", refFile, "reference.jpg");
         res = await fetch("/api/image", { method: "POST", body: form });
       } else {
         res = await fetch("/api/image", {

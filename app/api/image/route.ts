@@ -4,80 +4,56 @@ import { checkAndConsume, getClientIp, LIMITS } from "@/lib/ratelimit";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-// Uploads a user-provided reference image to a public host so Pollinations can
-// read it (its `image` param only accepts public URLs). Returns the direct URL.
-// Tries several anonymous hosts in order, since some reject cloud/datacenter IPs.
-async function uploadReference(file: File): Promise<string> {
-  const buf = Buffer.from(await file.arrayBuffer());
-  const name = file.name || "reference.png";
-  const type = file.type || "image/png";
-  const blob = () => new Blob([buf], { type });
+// Describes a reference image using Pollinations' free vision endpoint. Accepts
+// a base64 data URI, so no external file host is needed. Returns a short caption
+// suitable for feeding into a text-to-image prompt.
+async function describeImage(dataUri: string): Promise<string> {
+  const payload = {
+    model: "openai",
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text:
+              "Describe esta imagen en una sola frase concisa (máx 60 palabras) para un " +
+              "generador de imágenes: sujeto principal, estilo, colores, composición y fondo. " +
+              "Responde solo con la descripción, sin comentarios ni comillas.",
+          },
+          { type: "image_url", image_url: { url: dataUri } },
+        ],
+      },
+    ],
+    max_tokens: 300,
+    private: true,
+    referrer: "agenthood",
+  };
 
-  // 1) tmpfiles.org — reliable from serverless; returns JSON.
-  try {
-    const fd = new FormData();
-    fd.append("file", blob(), name);
-    const r = await fetch("https://tmpfiles.org/api/v1/upload", {
-      method: "POST",
-      body: fd,
-    });
-    if (r.ok) {
-      const j = (await r.json()) as { data?: { url?: string } };
-      const u = j?.data?.url;
-      if (u) {
-        // Convert the page URL to a direct-download URL and force https.
-        return u
-          .replace("://tmpfiles.org/", "://tmpfiles.org/dl/")
-          .replace(/^http:/, "https:");
-      }
-    }
-    console.error("uploadReference tmpfiles failed", r.status);
-  } catch (e) {
-    console.error("uploadReference tmpfiles error", e);
+  const r = await fetch("https://text.pollinations.ai/openai", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) {
+    const detail = await r.text().catch(() => "");
+    console.error("describeImage not ok", r.status, detail.slice(0, 200));
+    throw new Error("vision " + r.status);
   }
-
-  // 2) 0x0.st — needs a User-Agent.
-  try {
-    const fd = new FormData();
-    fd.append("file", blob(), name);
-    const r = await fetch("https://0x0.st", {
-      method: "POST",
-      body: fd,
-      headers: { "User-Agent": "agenthood/1.0 (+https://agent-hood.vercel.app)" },
-    });
-    if (r.ok) {
-      const u = (await r.text()).trim();
-      if (/^https?:\/\//.test(u)) return u;
-    }
-    console.error("uploadReference 0x0 failed", r.status);
-  } catch (e) {
-    console.error("uploadReference 0x0 error", e);
+  const data = (await r.json().catch(() => null)) as
+    | { choices?: { message?: { content?: string } }[] }
+    | null;
+  const caption = data?.choices?.[0]?.message?.content;
+  if (!caption || typeof caption !== "string") {
+    console.error("describeImage empty response");
+    throw new Error("vision empty");
   }
-
-  // 3) catbox.moe — last resort (often blocks datacenter IPs).
-  try {
-    const fd = new FormData();
-    fd.append("reqtype", "fileupload");
-    fd.append("fileToUpload", blob(), name);
-    const r = await fetch("https://catbox.moe/user/api.php", {
-      method: "POST",
-      body: fd,
-    });
-    if (r.ok) {
-      const u = (await r.text()).trim();
-      if (/^https?:\/\//.test(u)) return u;
-    }
-    console.error("uploadReference catbox failed", r.status);
-  } catch (e) {
-    console.error("uploadReference catbox error", e);
-  }
-
-  throw new Error("all upload hosts failed");
+  return caption.trim();
 }
 
 // Returns a ready-to-load image URL (no branding/logo) for the given prompt.
-// If a reference image is provided, uses the `kontext` model (image-to-image);
-// otherwise uses `flux` (text-to-image).
+// If a reference image is provided, the free vision model describes it and that
+// description is blended into the prompt so the result reflects the reference.
 export async function POST(req: Request) {
   const ip = getClientIp(req);
   const rate = checkAndConsume(ip, "image");
@@ -122,28 +98,35 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Cuerpo inválido" }, { status: 400 });
   }
 
-  // Host the reference image so Pollinations can read it (public URL required).
-  let referenceUrl = "";
-  if (referenceFile) {
-    try {
-      referenceUrl = await uploadReference(referenceFile);
-    } catch (e) {
-      console.error("image route: reference upload failed", e);
-      return NextResponse.json(
-        {
-          error:
-            "No se pudo subir la imagen de referencia ahora mismo. Intenta con otra imagen o genera sin referencia.",
-        },
-        { status: 502 }
-      );
-    }
-  }
-
   if (!prompt) {
     return NextResponse.json({ error: "Escribe una descripción" }, { status: 400 });
   }
   if (prompt.length > 800) {
     return NextResponse.json({ error: "La descripción es demasiado larga" }, { status: 400 });
+  }
+
+  // Blend the reference image (via vision caption) into the prompt.
+  let finalPrompt = prompt;
+  if (referenceFile) {
+    try {
+      const buf = Buffer.from(await referenceFile.arrayBuffer());
+      const type = referenceFile.type || "image/png";
+      const dataUri = `data:${type};base64,${buf.toString("base64")}`;
+      const caption = await describeImage(dataUri);
+      finalPrompt = `${prompt}. Inspirado en esta imagen de referencia: ${caption}`.slice(
+        0,
+        1500
+      );
+    } catch (e) {
+      console.error("image route: reference analysis failed", e);
+      return NextResponse.json(
+        {
+          error:
+            "No se pudo analizar la imagen de referencia ahora mismo. Intenta con otra imagen o genera sin referencia.",
+        },
+        { status: 502 }
+      );
+    }
   }
 
   const sizes: Record<string, [number, number]> = {
@@ -154,26 +137,25 @@ export async function POST(req: Request) {
   const [width, height] = sizes[ratio] || sizes.square;
 
   // Pseudo-random seed without Math.random dependency concerns.
-  const seed = (Date.now() % 1_000_000) + prompt.length;
+  const seed = (Date.now() % 1_000_000) + finalPrompt.length;
 
   const params = new URLSearchParams({
     width: String(width),
     height: String(height),
     seed: String(seed),
     nologo: "true",
-    model: referenceUrl ? "kontext" : "flux",
+    model: "flux",
     referrer: "agenthood",
   });
-  if (referenceUrl) params.set("image", referenceUrl);
 
   const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(
-    prompt
+    finalPrompt
   )}?${params.toString()}`;
 
   return NextResponse.json({
     url,
     remaining: rate.remaining,
     limit: rate.limit,
-    usedReference: Boolean(referenceUrl),
+    usedReference: Boolean(referenceFile),
   });
 }
