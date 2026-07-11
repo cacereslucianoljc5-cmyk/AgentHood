@@ -160,18 +160,9 @@ export async function GET(req: Request) {
     }
   }
 
-  // Respaldo: banner del CDN de DexScreener (se encuadra a la izquierda en el
-  // cliente para mostrar el logo). Si no existe, el cliente cae al avatar.
-  for (const t of tokens) {
-    if (!t.imageUrl && t.address) {
-      t.imageUrl = `https://cdn.dexscreener.com/token-images/og/${NET}/${t.address}`;
-      t.banner = true;
-    }
-  }
-
-  // Orden: iconos limpios primero, luego banners, luego sin imagen.
-  const score = (t: Token) => (t.imageUrl ? (t.banner ? 1 : 2) : 0);
-  tokens.sort((x, y) => score(y) - score(x));
+  // Sin banners feos: los que no tengan icono limpio se muestran como avatar.
+  // Orden: con icono primero.
+  tokens.sort((x, y) => Number(Boolean(y.imageUrl)) - Number(Boolean(x.imageUrl)));
 
   return NextResponse.json({ network: NET, mode, window: win, tokens: tokens.slice(0, 24) });
 }
