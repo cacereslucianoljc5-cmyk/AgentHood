@@ -2,8 +2,12 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-// Red de la que se leen los memecoins. Robinhood Chain (chain id 4663) →
-// slug "robinhood" tanto en GeckoTerminal como en DexScreener.
+// Fuente principal: backend público del launchpad NOXA (fun.noxa.fi), que trae
+// el LOGO real que sube el creador para cada token de Robinhood Chain, incluso
+// los recién lanzados. Sin API key. El subdominio puede rotar si NOXA redepliega
+// (configurable con NOXA_BASE_URL). Respaldo: GeckoTerminal.
+const NOXA_BASE =
+  process.env.NOXA_BASE_URL || "https://awk00kk00gskkw0o8kc488kg.notoriouslywrong.com";
 const NET = process.env.HOOD_NETWORK || "robinhood";
 const GT = "https://api.geckoterminal.com/api/v2";
 
@@ -11,11 +15,10 @@ type Token = {
   name: string;
   symbol: string;
   imageUrl: string;
-  banner: boolean;
   address: string;
   priceUsd: string | null;
   change24h: number | null;
-  createdAt: string | null;
+  createdAtMs: number | null;
   url: string;
 };
 
@@ -25,14 +28,81 @@ function windowMs(w: string): number {
   return 24 * 3_600_000;
 }
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-async function fetchPage(endpoint: string): Promise<{ pools: any[]; tokens: Map<string, any> }> {
-  const r = await fetch(endpoint, { headers: { Accept: "application/json" }, next: { revalidate: 15 } });
-  if (!r.ok) {
-    const t = await r.text().catch(() => "");
-    console.error("geckoterminal failed", r.status, t.slice(0, 200));
-    return { pools: [], tokens: new Map() };
+function toMs(v: unknown): number | null {
+  if (v == null) return null;
+  if (typeof v === "number") return v < 1e12 ? v * 1000 : v;
+  if (typeof v === "string" && v !== "") {
+    const n = Number(v);
+    if (!Number.isNaN(n)) return n < 1e12 ? n * 1000 : n;
+    const p = Date.parse(v);
+    if (!Number.isNaN(p)) return p;
   }
+  return null;
+}
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+// Precio de ETH en USD (para convertir priceEth de NOXA). Cacheado; si falla,
+// se muestra el precio en ETH.
+async function getEthUsd(): Promise<number | null> {
+  try {
+    const r = await fetch(
+      "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd",
+      { headers: { Accept: "application/json" }, next: { revalidate: 60 } }
+    );
+    if (!r.ok) return null;
+    const j: any = await r.json();
+    const v = j?.ethereum?.usd;
+    return typeof v === "number" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+// --- Fuente principal: NOXA ---
+async function fetchNoxa(sort: string, limit: number): Promise<any[]> {
+  const url = `${NOXA_BASE}/v1/${NET}/tokens?sort=${sort}&order=desc&limit=${limit}&hasImage=true`;
+  try {
+    const r = await fetch(url, {
+      headers: { "User-Agent": "AgentHood/1.0", Accept: "application/json" },
+      next: { revalidate: 15 },
+    });
+    if (!r.ok) {
+      console.error("noxa failed", r.status);
+      return [];
+    }
+    const j: any = await r.json();
+    return Array.isArray(j?.tokens) ? j.tokens : [];
+  } catch (e) {
+    console.error("noxa error", e);
+    return [];
+  }
+}
+
+function mapNoxa(rows: any[], ethUsd: number | null): Token[] {
+  const out: Token[] = [];
+  for (const d of rows) {
+    const priceEth = typeof d.priceEth === "number" ? d.priceEth : Number(d.priceEth);
+    const priceUsd =
+      ethUsd && Number.isFinite(priceEth) ? (priceEth * ethUsd).toPrecision(4) : null;
+    out.push({
+      name: d.name || "Token",
+      symbol: d.symbol || "",
+      imageUrl: d.logo ? String(d.logo) : "",
+      address: d.address ? String(d.address) : "",
+      priceUsd,
+      change24h: null,
+      createdAtMs: toMs(d.createdAtTime),
+      url: d.address ? `https://fun.noxa.fi/${NET}/${d.address}` : "https://fun.noxa.fi/robinhood",
+    });
+  }
+  return out;
+}
+
+// --- Respaldo: GeckoTerminal ---
+async function fetchGtPage(endpoint: string): Promise<{ pools: any[]; tokens: Map<string, any> }> {
+  const r = await fetch(endpoint, { headers: { Accept: "application/json" }, next: { revalidate: 15 } });
+  if (!r.ok) return { pools: [], tokens: new Map() };
   const json: any = await r.json();
   const tokens = new Map<string, any>();
   for (const inc of Array.isArray(json?.included) ? json.included : []) {
@@ -41,59 +111,36 @@ async function fetchPage(endpoint: string): Promise<{ pools: any[]; tokens: Map<
   return { pools: Array.isArray(json?.data) ? json.data : [], tokens };
 }
 
-// Iconos limpios desde los feeds globales de DexScreener (perfiles y boosts),
-// filtrados a nuestra red. Devuelve mapa address(minúsculas) -> icon URL.
-async function fetchDexIconFeeds(): Promise<Map<string, string>> {
-  const map = new Map<string, string>();
-  const feeds = [
-    "https://api.dexscreener.com/token-profiles/latest/v1",
-    "https://api.dexscreener.com/token-boosts/top/v1",
-    "https://api.dexscreener.com/token-boosts/latest/v1",
-  ];
-  const results = await Promise.all(
-    feeds.map((u) =>
-      fetch(u, { headers: { Accept: "application/json" }, next: { revalidate: 30 } })
-        .then((r) => (r.ok ? r.json() : []))
-        .catch(() => [])
-    )
-  );
-  for (const arr of results) {
-    for (const it of Array.isArray(arr) ? arr : []) {
-      if (it?.chainId === NET && it?.tokenAddress && it?.icon) {
-        const addr = String(it.tokenAddress).toLowerCase();
-        if (!map.has(addr)) map.set(addr, String(it.icon));
-      }
-    }
-  }
-  return map;
-}
-
-// Rellena imágenes faltantes usando DexScreener (que indexa el icono de los
-// tokens recién lanzados al instante).
-async function fetchDexImages(addresses: string[]): Promise<Map<string, string>> {
-  const map = new Map<string, string>();
-  if (!addresses.length) return map;
-  const batch = addresses.slice(0, 30).join(",");
-  try {
-    const r = await fetch(`https://api.dexscreener.com/tokens/v1/${NET}/${batch}`, {
-      headers: { Accept: "application/json" },
-      next: { revalidate: 30 },
+async function fetchGecko(mode: string): Promise<Token[]> {
+  const base =
+    mode === "new"
+      ? `${GT}/networks/${NET}/new_pools?include=base_token`
+      : `${GT}/networks/${NET}/trending_pools?include=base_token&duration=24h`;
+  const pages = await Promise.all([fetchGtPage(`${base}&page=1`), fetchGtPage(`${base}&page=2`)]);
+  const tokenById = new Map<string, any>();
+  for (const p of pages) for (const [k, v] of p.tokens) tokenById.set(k, v);
+  const pools = pages.flatMap((p) => p.pools);
+  const seen = new Set<string>();
+  const out: Token[] = [];
+  for (const pool of pools) {
+    const a = pool?.attributes || {};
+    const baseId = pool?.relationships?.base_token?.data?.id;
+    if (!baseId || seen.has(baseId)) continue;
+    seen.add(baseId);
+    const t = tokenById.get(baseId);
+    const img = t?.image_url && t.image_url !== "missing.png" ? String(t.image_url) : "";
+    out.push({
+      name: t?.name || a.name || "Token",
+      symbol: t?.symbol || "",
+      imageUrl: img,
+      address: t?.address ? String(t.address) : "",
+      priceUsd: a.base_token_price_usd ?? null,
+      change24h: a.price_change_percentage?.h24 != null ? Number(a.price_change_percentage.h24) : null,
+      createdAtMs: a.pool_created_at ? Date.parse(a.pool_created_at) : null,
+      url: a.address ? `https://www.geckoterminal.com/${NET}/pools/${a.address}` : "",
     });
-    if (!r.ok) {
-      console.error("dexscreener failed", r.status);
-      return map;
-    }
-    const arr: any = await r.json();
-    const pairs = Array.isArray(arr) ? arr : arr?.pairs || [];
-    for (const p of pairs) {
-      const addr = p?.baseToken?.address?.toLowerCase();
-      const img = p?.info?.imageUrl;
-      if (addr && img && !map.has(addr)) map.set(addr, String(img));
-    }
-  } catch (e) {
-    console.error("dexscreener error", e);
   }
-  return map;
+  return out;
 }
 
 export async function GET(req: Request) {
@@ -101,68 +148,31 @@ export async function GET(req: Request) {
   const mode = searchParams.get("mode") === "new" ? "new" : "trending";
   const win = searchParams.get("window") || "24h";
 
-  const base =
-    mode === "new"
-      ? `${GT}/networks/${NET}/new_pools?include=base_token`
-      : `${GT}/networks/${NET}/trending_pools?include=base_token&duration=24h`;
+  let tokens: Token[] = [];
 
-  let pages: { pools: any[]; tokens: Map<string, any> }[];
-  try {
-    pages = await Promise.all([fetchPage(`${base}&page=1`), fetchPage(`${base}&page=2`)]);
-  } catch (e) {
-    console.error("geckoterminal error", e);
-    return NextResponse.json({ error: "Error de red al cargar tokens." }, { status: 502 });
-  }
-
-  const tokenById = new Map<string, any>();
-  for (const p of pages) for (const [k, v] of p.tokens) tokenById.set(k, v);
-  const pools = pages.flatMap((p) => p.pools);
-
-  const cutoff = Date.now() - windowMs(win);
-  const seen = new Set<string>();
-  const tokens: Token[] = [];
-
-  for (const pool of pools) {
-    const a = pool?.attributes || {};
-    const baseId = pool?.relationships?.base_token?.data?.id;
-    if (!baseId || seen.has(baseId)) continue;
-    const t = tokenById.get(baseId);
-
-    const createdAt = a.pool_created_at || null;
-    if (mode === "new" && createdAt && new Date(createdAt).getTime() < cutoff) continue;
-
-    const imageUrl = t?.image_url && t.image_url !== "missing.png" ? String(t.image_url) : "";
-
-    seen.add(baseId);
-    tokens.push({
-      name: t?.name || a.name || "Token",
-      symbol: t?.symbol || "",
-      imageUrl,
-      banner: false,
-      address: t?.address ? String(t.address) : "",
-      priceUsd: a.base_token_price_usd ?? null,
-      change24h: a.price_change_percentage?.h24 != null ? Number(a.price_change_percentage.h24) : null,
-      createdAt,
-      url: a.address ? `https://www.geckoterminal.com/${NET}/pools/${a.address}` : "",
-    });
-  }
-
-  // Rellena imágenes faltantes con iconos LIMPIOS de DexScreener, combinando
-  // varias fuentes: pares por dirección + feeds de perfiles/boosts. Lo que no
-  // tenga icono se queda sin imagen y el cliente muestra un avatar de letras.
-  const missing = tokens.filter((t) => !t.imageUrl && t.address).map((t) => t.address);
-  if (missing.length) {
-    const [byAddr, feeds] = await Promise.all([fetchDexImages(missing), fetchDexIconFeeds()]);
-    for (const t of tokens) {
-      if (t.imageUrl || !t.address) continue;
-      const key = t.address.toLowerCase();
-      t.imageUrl = byAddr.get(key) || feeds.get(key) || "";
+  // 1) NOXA (logo real del creador).
+  const [rows, ethUsd] = await Promise.all([
+    fetchNoxa(mode === "new" ? "newest" : "volume", mode === "new" ? 100 : 40),
+    getEthUsd(),
+  ]);
+  if (rows.length) {
+    tokens = mapNoxa(rows, ethUsd);
+    if (mode === "new") {
+      const cutoff = Date.now() - windowMs(win);
+      tokens = tokens.filter((t) => t.createdAtMs == null || t.createdAtMs >= cutoff);
     }
+    if (rows[0]?.logo) console.log("noxa logo sample:", String(rows[0].logo).slice(0, 120));
   }
 
-  // Sin banners feos: los que no tengan icono limpio se muestran como avatar.
-  // Orden: con icono primero.
-  tokens.sort((x, y) => Number(Boolean(y.imageUrl)) - Number(Boolean(x.imageUrl)));
+  // 2) Respaldo GeckoTerminal si NOXA no dio nada.
+  if (!tokens.length) {
+    tokens = await fetchGecko(mode);
+    if (mode === "new") {
+      const cutoff = Date.now() - windowMs(win);
+      tokens = tokens.filter((t) => t.createdAtMs == null || t.createdAtMs >= cutoff);
+    }
+    tokens.sort((x, y) => Number(Boolean(y.imageUrl)) - Number(Boolean(x.imageUrl)));
+  }
 
   return NextResponse.json({ network: NET, mode, window: win, tokens: tokens.slice(0, 24) });
 }

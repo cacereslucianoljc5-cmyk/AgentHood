@@ -9,6 +9,9 @@ const ALLOWED = [
   "geckoterminal.com",
   "dexscreener.com",
   "dexscreener.io",
+  // NOXA launchpad (logos de creadores en Robinhood Chain)
+  "noxa.fi",
+  "notoriouslywrong.com",
   // IPFS / CDNs comunes para imágenes de tokens de launchpads
   "ipfs.io",
   "cloudflare-ipfs.com",
