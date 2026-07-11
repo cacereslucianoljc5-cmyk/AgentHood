@@ -4,56 +4,77 @@ import { checkAndConsume, getClientIp, LIMITS } from "@/lib/ratelimit";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-// Describes a reference image using Pollinations' free vision endpoint. Accepts
-// a base64 data URI, so no external file host is needed. Returns a short caption
-// suitable for feeding into a text-to-image prompt.
-async function describeImage(dataUri: string): Promise<string> {
-  const payload = {
-    model: "openai",
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text:
-              "Describe esta imagen en una sola frase concisa (máx 60 palabras) para un " +
-              "generador de imágenes: sujeto principal, estilo, colores, composición y fondo. " +
-              "Responde solo con la descripción, sin comentarios ni comillas.",
-          },
-          { type: "image_url", image_url: { url: dataUri } },
-        ],
-      },
-    ],
-    max_tokens: 300,
-    private: true,
-    referrer: "agenthood",
-  };
+// Free "seed"-tier token (register at auth.pollinations.ai) enabling the
+// kontext image-to-image model. Set as POLLINATIONS_TOKEN in Vercel.
+const TOKEN = process.env.POLLINATIONS_TOKEN?.trim();
 
-  const r = await fetch("https://text.pollinations.ai/openai", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!r.ok) {
-    const detail = await r.text().catch(() => "");
-    console.error("describeImage not ok", r.status, detail.slice(0, 200));
-    throw new Error("vision " + r.status);
+// Hosts the reference image at a public URL (kontext's `image` param requires
+// one). Tries several anonymous hosts, since some reject datacenter IPs.
+async function uploadReference(file: File): Promise<string> {
+  const buf = Buffer.from(await file.arrayBuffer());
+  const type = file.type || "image/jpeg";
+  const name = "reference.jpg";
+  const blob = () => new Blob([buf], { type });
+
+  // 1) tmpfiles.org
+  try {
+    const fd = new FormData();
+    fd.append("file", blob(), name);
+    const r = await fetch("https://tmpfiles.org/api/v1/upload", { method: "POST", body: fd });
+    if (r.ok) {
+      const j = (await r.json()) as { data?: { url?: string } };
+      const u = j?.data?.url;
+      if (u) {
+        return u.replace("://tmpfiles.org/", "://tmpfiles.org/dl/").replace(/^http:/, "https:");
+      }
+    }
+    console.error("uploadReference tmpfiles failed", r.status);
+  } catch (e) {
+    console.error("uploadReference tmpfiles error", e);
   }
-  const data = (await r.json().catch(() => null)) as
-    | { choices?: { message?: { content?: string } }[] }
-    | null;
-  const caption = data?.choices?.[0]?.message?.content;
-  if (!caption || typeof caption !== "string") {
-    console.error("describeImage empty response");
-    throw new Error("vision empty");
+
+  // 2) 0x0.st
+  try {
+    const fd = new FormData();
+    fd.append("file", blob(), name);
+    const r = await fetch("https://0x0.st", {
+      method: "POST",
+      body: fd,
+      headers: { "User-Agent": "agenthood/1.0 (+https://agent-hood.vercel.app)" },
+    });
+    if (r.ok) {
+      const u = (await r.text()).trim();
+      if (/^https?:\/\//.test(u)) return u;
+    }
+    console.error("uploadReference 0x0 failed", r.status);
+  } catch (e) {
+    console.error("uploadReference 0x0 error", e);
   }
-  return caption.trim();
+
+  // 3) catbox.moe (last resort)
+  try {
+    const fd = new FormData();
+    fd.append("reqtype", "fileupload");
+    fd.append("fileToUpload", blob(), name);
+    const r = await fetch("https://catbox.moe/user/api.php", { method: "POST", body: fd });
+    if (r.ok) {
+      const u = (await r.text()).trim();
+      if (/^https?:\/\//.test(u)) return u;
+    }
+    console.error("uploadReference catbox failed", r.status);
+  } catch (e) {
+    console.error("uploadReference catbox error", e);
+  }
+
+  throw new Error("all upload hosts failed");
 }
 
-// Returns a ready-to-load image URL (no branding/logo) for the given prompt.
-// If a reference image is provided, the free vision model describes it and that
-// description is blended into the prompt so the result reflects the reference.
+const SIZES: Record<string, [number, number]> = {
+  square: [1024, 1024],
+  landscape: [1280, 768],
+  portrait: [768, 1280],
+};
+
 export async function POST(req: Request) {
   const ip = getClientIp(req);
   const rate = checkAndConsume(ip, "image");
@@ -105,40 +126,86 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "La descripción es demasiado larga" }, { status: 400 });
   }
 
-  // Blend the reference image (via vision caption) into the prompt.
-  let finalPrompt = prompt;
+  const [width, height] = SIZES[ratio] || SIZES.square;
+  const seed = (Date.now() % 1_000_000) + prompt.length;
+
+  // ---------- Image-to-image (real editing) with kontext + token ----------
   if (referenceFile) {
-    try {
-      const buf = Buffer.from(await referenceFile.arrayBuffer());
-      const type = referenceFile.type || "image/png";
-      const dataUri = `data:${type};base64,${buf.toString("base64")}`;
-      const caption = await describeImage(dataUri);
-      finalPrompt = `${prompt}. Inspirado en esta imagen de referencia: ${caption}`.slice(
-        0,
-        1500
-      );
-    } catch (e) {
-      console.error("image route: reference analysis failed", e);
+    if (!TOKEN) {
       return NextResponse.json(
         {
           error:
-            "No se pudo analizar la imagen de referencia ahora mismo. Intenta con otra imagen o genera sin referencia.",
+            "La edición de imágenes aún no está activada. Falta configurar el token de Pollinations (POLLINATIONS_TOKEN) en Vercel.",
         },
+        { status: 400 }
+      );
+    }
+
+    let referenceUrl: string;
+    try {
+      referenceUrl = await uploadReference(referenceFile);
+    } catch (e) {
+      console.error("image route: reference upload failed", e);
+      return NextResponse.json(
+        { error: "No se pudo subir la imagen de referencia. Intenta con otra imagen." },
         { status: 502 }
       );
     }
+
+    const params = new URLSearchParams({
+      width: String(width),
+      height: String(height),
+      seed: String(seed),
+      nologo: "true",
+      model: "kontext",
+      referrer: "agenthood",
+    });
+    params.set("image", referenceUrl);
+    const kontextUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(
+      prompt
+    )}?${params.toString()}`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 55_000);
+    try {
+      const resp = await fetch(kontextUrl, {
+        headers: { Authorization: `Bearer ${TOKEN}` },
+        signal: controller.signal,
+      });
+      if (!resp.ok) {
+        const detail = await resp.text().catch(() => "");
+        console.error("kontext failed", resp.status, detail.slice(0, 300));
+        return NextResponse.json(
+          { error: "El editor de IA no pudo procesar la imagen. Intenta de nuevo." },
+          { status: 502 }
+        );
+      }
+      const ctype = resp.headers.get("content-type") || "";
+      if (!ctype.startsWith("image/")) {
+        const detail = await resp.text().catch(() => "");
+        console.error("kontext non-image response", ctype, detail.slice(0, 300));
+        return NextResponse.json(
+          { error: "El editor de IA no devolvió una imagen. Intenta de nuevo." },
+          { status: 502 }
+        );
+      }
+      const bytes = Buffer.from(await resp.arrayBuffer());
+      return new NextResponse(bytes, {
+        status: 200,
+        headers: { "Content-Type": ctype, "Cache-Control": "no-store" },
+      });
+    } catch (e) {
+      console.error("kontext request error", e);
+      return NextResponse.json(
+        { error: "El editor de IA tardó demasiado. Intenta de nuevo." },
+        { status: 504 }
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
-  const sizes: Record<string, [number, number]> = {
-    square: [1024, 1024],
-    landscape: [1280, 768],
-    portrait: [768, 1280],
-  };
-  const [width, height] = sizes[ratio] || sizes.square;
-
-  // Pseudo-random seed without Math.random dependency concerns.
-  const seed = (Date.now() % 1_000_000) + finalPrompt.length;
-
+  // ---------- Text-to-image (flux) ----------
   const params = new URLSearchParams({
     width: String(width),
     height: String(height),
@@ -147,15 +214,13 @@ export async function POST(req: Request) {
     model: "flux",
     referrer: "agenthood",
   });
-
   const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(
-    finalPrompt
+    prompt
   )}?${params.toString()}`;
 
   return NextResponse.json({
     url,
     remaining: rate.remaining,
     limit: rate.limit,
-    usedReference: Boolean(referenceFile),
   });
 }

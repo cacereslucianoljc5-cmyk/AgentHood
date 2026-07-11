@@ -252,13 +252,27 @@ function ImageTab() {
           body: JSON.stringify({ prompt: text, ratio }),
         });
       }
-      const data = await res.json();
       if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
         setError(data.error || "Algo salió mal.");
         setLoading(false);
         return;
       }
-      // Preload the image so we only stop the spinner when it's ready.
+      const ct = res.headers.get("content-type") || "";
+      if (ct.startsWith("image/")) {
+        // Real edited image returned directly as bytes (kontext).
+        const blob = await res.blob();
+        const objUrl = URL.createObjectURL(blob);
+        setImgUrl((prev) => {
+          if (prev.startsWith("blob:")) URL.revokeObjectURL(prev);
+          return objUrl;
+        });
+        counter.bump();
+        setLoading(false);
+        return;
+      }
+      const data = await res.json();
+      // Preload the image URL so we only stop the spinner when it's ready.
       const im = new window.Image();
       im.onload = () => {
         setImgUrl(data.url);
