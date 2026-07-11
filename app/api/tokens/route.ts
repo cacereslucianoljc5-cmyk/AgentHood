@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 // Fuente principal: backend público del launchpad NOXA (fun.noxa.fi), que trae
 // el LOGO real que sube el creador para cada token de Robinhood Chain, incluso
@@ -177,7 +178,9 @@ export async function GET(req: Request) {
       const cutoff = Date.now() - windowMs(win);
       tokens = tokens.filter((t) => t.createdAtMs == null || t.createdAtMs >= cutoff);
     }
-    if (tokens[0]?.imageUrl) console.log("noxa img sample:", tokens[0].imageUrl.slice(0, 140));
+    console.log(
+      `tokens sent: total=${tokens.length} withImg=${tokens.filter((t) => t.imageUrl).length} sample=${tokens[0]?.imageUrl?.slice(0, 80) || "-"}`
+    );
   }
 
   // 2) Respaldo GeckoTerminal si NOXA no dio nada.
