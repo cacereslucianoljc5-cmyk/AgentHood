@@ -62,6 +62,7 @@ async function fetchDexImages(addresses: string[]): Promise<Map<string, string>>
       const img = p?.info?.imageUrl;
       if (addr && img && !map.has(addr)) map.set(addr, String(img));
     }
+    console.log(`dexscreener: requested=${addresses.length} pairs=${pairs.length} withImage=${map.size}`);
   } catch (e) {
     console.error("dexscreener error", e);
   }
@@ -120,6 +121,9 @@ export async function GET(req: Request) {
 
   // Rellena imágenes faltantes con DexScreener.
   const missing = tokens.filter((t) => !t.imageUrl && t.address).map((t) => t.address);
+  console.log(
+    `tokens mode=${mode} total=${tokens.length} withGtImage=${tokens.length - missing.length} missing=${missing.length} sampleAddr=${missing[0] || "-"}`
+  );
   if (missing.length) {
     const imgMap = await fetchDexImages(missing);
     for (const t of tokens) {
