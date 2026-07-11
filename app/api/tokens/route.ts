@@ -173,13 +173,17 @@ export async function GET(req: Request) {
     getEthUsd(),
   ]);
   if (rows.length) {
-    tokens = mapNoxa(rows, ethUsd);
+    const all = mapNoxa(rows, ethUsd);
     if (mode === "new") {
       const cutoff = Date.now() - windowMs(win);
-      tokens = tokens.filter((t) => t.createdAtMs == null || t.createdAtMs >= cutoff);
+      const filtered = all.filter((t) => t.createdAtMs != null && t.createdAtMs >= cutoff);
+      // Si el filtro deja muy pocos (parseo de fecha dudoso), muestra los más nuevos.
+      tokens = filtered.length >= 3 ? filtered : all;
+    } else {
+      tokens = all;
     }
     console.log(
-      `tokens sent: total=${tokens.length} withImg=${tokens.filter((t) => t.imageUrl).length} sample=${tokens[0]?.imageUrl?.slice(0, 80) || "-"}`
+      `tokens: mode=${mode} noxaRows=${rows.length} sent=${tokens.length} withImg=${tokens.filter((t) => t.imageUrl).length} rawCreated=${JSON.stringify(rows[0]?.createdAtTime)}`
     );
   }
 
