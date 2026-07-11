@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Ratio = "square" | "landscape" | "portrait";
 
@@ -44,6 +44,26 @@ function IconDownload({ size = 16 }: { size?: number }) {
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <path d="M7 10l5 5 5-5" />
       <path d="M12 15V3" />
+    </svg>
+  );
+}
+
+function IconUpload({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="M17 8l-5-5-5 5" />
+      <path d="M12 3v12" />
     </svg>
   );
 }
@@ -147,7 +167,33 @@ function ImageTab() {
   const [loading, setLoading] = useState(false);
   const [imgUrl, setImgUrl] = useState("");
   const [error, setError] = useState("");
+  const [refFile, setRefFile] = useState<File | null>(null);
+  const [refPreview, setRefPreview] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const counter = useDailyCounter("image", IMAGE_LIMIT);
+
+  function onPickReference(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("El archivo debe ser una imagen.");
+      return;
+    }
+    if (file.size > 8_000_000) {
+      setError("La imagen de referencia es demasiado grande (máx 8 MB).");
+      return;
+    }
+    setError("");
+    setRefFile(file);
+    setRefPreview(URL.createObjectURL(file));
+  }
+
+  function clearReference() {
+    setRefFile(null);
+    if (refPreview) URL.revokeObjectURL(refPreview);
+    setRefPreview("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
 
   async function generate() {
     const text = prompt.trim();
@@ -160,11 +206,22 @@ function ImageTab() {
     setLoading(true);
     setImgUrl("");
     try {
-      const res = await fetch("/api/image", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: text, ratio }),
-      });
+      let res: Response;
+      if (refFile) {
+        // Reference image → send as multipart so the server can host it and
+        // run image-to-image (kontext) on Pollinations.
+        const form = new FormData();
+        form.append("prompt", text);
+        form.append("ratio", ratio);
+        form.append("image", refFile);
+        res = await fetch("/api/image", { method: "POST", body: form });
+      } else {
+        res = await fetch("/api/image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: text, ratio }),
+        });
+      }
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || "Algo salió mal.");
@@ -200,12 +257,52 @@ function ImageTab() {
       <div className="limit-pill">
         <IconImage size={15} /> Imágenes hoy: <b>{counter.remaining}</b> / {IMAGE_LIMIT} restantes
       </div>
+
+      <div className="ref-row">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={onPickReference}
+          disabled={loading}
+          style={{ display: "none" }}
+        />
+        {refPreview ? (
+          <div className="ref-preview">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={refPreview} alt="Imagen de referencia" />
+            <button
+              type="button"
+              className="ref-remove"
+              onClick={clearReference}
+              disabled={loading}
+              aria-label="Quitar imagen de referencia"
+            >
+              ×
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="ref-upload"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={loading}
+          >
+            <IconUpload size={16} /> Subir imagen de referencia (opcional)
+          </button>
+        )}
+      </div>
+
       <input
         type="text"
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && generate()}
-        placeholder="Un astronauta neón montando una moto en Marte, estilo cyberpunk..."
+        placeholder={
+          refFile
+            ? "Describe cómo transformar tu imagen (ej. estilo acuarela, fondo neón)..."
+            : "Un astronauta neón montando una moto en Marte, estilo cyberpunk..."
+        }
         disabled={loading}
       />
       <div className="img-controls">
@@ -227,7 +324,7 @@ function ImageTab() {
           onClick={generate}
           disabled={loading || !prompt.trim()}
         >
-          {loading ? "Generando..." : "Generar imagen"}
+          {loading ? "Generando..." : refFile ? "Transformar imagen" : "Generar imagen"}
         </button>
       </div>
       {error && <div className="error">{error}</div>}
