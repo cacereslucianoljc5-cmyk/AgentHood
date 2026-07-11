@@ -9,28 +9,28 @@ export const maxDuration = 60;
 //   CLOUDFLARE_API_TOKEN   — an API token with "Workers AI" read permission
 const CF_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
 const CF_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN?.trim();
-const CF_MODEL = "@cf/runwayml/stable-diffusion-v1-5-img2img";
+// FLUX.2 [klein] 9B — state-of-the-art unified generation + editing, free tier.
+const CF_MODEL = "@cf/black-forest-labs/flux-2-klein-9b";
 
 type EditedImage = { data: Buffer; mime: string };
 
-// Regenerates the reference image guided by the prompt (image-to-image).
-async function editWithCloudflare(instruction: string, buf: Buffer): Promise<EditedImage> {
+// Edits the reference image guided by the prompt using FLUX.2 klein.
+// The model takes reference images as multipart fields input_image_0..3
+// (each must be smaller than 512x512).
+async function editWithCloudflare(
+  instruction: string,
+  buf: Buffer,
+  mime: string
+): Promise<EditedImage> {
   const url = `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/run/${CF_MODEL}`;
-  const body = {
-    prompt: instruction,
-    image: Array.from(new Uint8Array(buf)),
-    strength: 0.55, // keep composition, apply the prompt
-    guidance: 7.5,
-    num_steps: 20,
-  };
+  const form = new FormData();
+  form.append("prompt", instruction);
+  form.append("input_image_0", new Blob([new Uint8Array(buf)], { type: mime }), "reference.jpg");
 
   const resp = await fetch(url, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${CF_API_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
+    headers: { Authorization: `Bearer ${CF_API_TOKEN}` },
+    body: form,
   });
 
   if (!resp.ok) {
@@ -130,7 +130,8 @@ export async function POST(req: Request) {
     const timeout = setTimeout(() => controller.abort(), 55_000);
     try {
       const buf = Buffer.from(await referenceFile.arrayBuffer());
-      const edited = await editWithCloudflare(prompt, buf);
+      const mime = referenceFile.type || "image/jpeg";
+      const edited = await editWithCloudflare(prompt, buf, mime);
       return new NextResponse(new Uint8Array(edited.data), {
         status: 200,
         headers: { "Content-Type": edited.mime, "Cache-Control": "no-store" },
