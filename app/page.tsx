@@ -170,6 +170,7 @@ function ImageTab() {
   const [refFile, setRefFile] = useState<Blob | null>(null);
   const [refPreview, setRefPreview] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
   const counter = useDailyCounter("image", IMAGE_LIMIT);
 
   // Shrink the image in the browser before uploading: keeps the payload small
@@ -223,6 +224,29 @@ function ImageTab() {
     if (refPreview) URL.revokeObjectURL(refPreview);
     setRefPreview("");
     if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  // Carga la imagen de un token (memecoin) como imagen de referencia del editor.
+  async function loadReferenceFromUrl(imageUrl: string) {
+    setError("");
+    try {
+      const res = await fetch(`/api/token-image?url=${encodeURIComponent(imageUrl)}`);
+      if (!res.ok) throw new Error("img");
+      const raw = await res.blob();
+      const file = new File([raw], "token.png", { type: raw.type || "image/png" });
+      let blob: Blob = file;
+      try {
+        blob = await downscaleImage(file);
+      } catch {
+        // usa el original si el canvas falla
+      }
+      if (refPreview) URL.revokeObjectURL(refPreview);
+      setRefFile(blob);
+      setRefPreview(URL.createObjectURL(blob));
+      editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch {
+      setError("No se pudo cargar la imagen del token. Prueba con otro.");
+    }
   }
 
   async function generate() {
@@ -297,7 +321,8 @@ function ImageTab() {
   ];
 
   return (
-    <div className="panel">
+    <>
+    <div className="panel" ref={editorRef}>
       <div className="limit-pill">
         <IconImage size={15} /> Imágenes hoy: <b>{counter.remaining}</b> / {IMAGE_LIMIT} restantes
       </div>
@@ -393,6 +418,157 @@ function ImageTab() {
         <a className="download" href={imgUrl} target="_blank" rel="noreferrer" download>
           <IconDownload size={15} /> Abrir / descargar imagen
         </a>
+      )}
+    </div>
+    <TokenFeed onUse={loadReferenceFromUrl} />
+    </>
+  );
+}
+
+type TokenInfo = {
+  name: string;
+  symbol: string;
+  imageUrl: string;
+  priceUsd: string | null;
+  change24h: number | null;
+  createdAt: string | null;
+  url: string;
+};
+
+function tokenImg(url: string) {
+  return `/api/token-image?url=${encodeURIComponent(url)}`;
+}
+
+function TokenFeed({ onUse }: { onUse: (imageUrl: string) => void }) {
+  const [mode, setMode] = useState<"trending" | "new">("trending");
+  const [win, setWin] = useState<"1h" | "6h" | "24h">("24h");
+  const [tokens, setTokens] = useState<TokenInfo[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    async function load() {
+      setLoading(true);
+      try {
+        const qs = mode === "new" ? `mode=new&window=${win}` : "mode=trending";
+        const res = await fetch(`/api/tokens?${qs}`);
+        const data = await res.json();
+        if (!alive) return;
+        if (!res.ok) {
+          setError(data.error || "No se pudieron cargar los tokens.");
+          setTokens([]);
+        } else {
+          setError("");
+          setTokens(data.tokens || []);
+        }
+      } catch {
+        if (alive) setError("Error de red al cargar tokens.");
+      } finally {
+        if (alive) setLoading(false);
+      }
+    }
+    load();
+    const id = setInterval(load, 30000); // refresco en tiempo real
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [mode, win]);
+
+  const filters: { key: string; label: string }[] = [
+    { key: "trending", label: "🔥 Trending" },
+    { key: "1h", label: "1h" },
+    { key: "6h", label: "6h" },
+    { key: "24h", label: "24h" },
+  ];
+  const active = mode === "trending" ? "trending" : win;
+  function selectFilter(k: string) {
+    if (k === "trending") setMode("trending");
+    else {
+      setMode("new");
+      setWin(k as "1h" | "6h" | "24h");
+    }
+  }
+
+  const featured = tokens[0];
+  const rest = tokens.slice(1);
+
+  return (
+    <div className="token-feed">
+      <div className="token-head">
+        <h2>🚀 Hood Trending</h2>
+        <span className="token-sub">Memecoins en vivo · toca ✏️ para editar</span>
+      </div>
+
+      <div className="token-filters">
+        {filters.map((f) => (
+          <button
+            key={f.key}
+            className={`token-filter ${active === f.key ? "active" : ""}`}
+            onClick={() => selectFilter(f.key)}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {error && <div className="error">{error}</div>}
+      {loading && tokens.length === 0 && (
+        <div className="token-loading">
+          <div className="spinner" />
+        </div>
+      )}
+      {!loading && !error && tokens.length === 0 && (
+        <div className="stage-hint">No hay tokens con imagen en esta ventana.</div>
+      )}
+
+      {featured && (
+        <div className="token-featured">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={tokenImg(featured.imageUrl)} alt={featured.name} />
+          <div className="token-featured-info">
+            <div className="token-name">
+              {featured.name} <span>{featured.symbol}</span>
+            </div>
+            {featured.priceUsd && (
+              <div className="token-price">
+                ${Number(featured.priceUsd).toPrecision(4)}
+                {featured.change24h != null && (
+                  <span className={featured.change24h >= 0 ? "up" : "down"}>
+                    {featured.change24h >= 0 ? " ▲" : " ▼"}
+                    {Math.abs(featured.change24h).toFixed(1)}%
+                  </span>
+                )}
+              </div>
+            )}
+            <button className="btn token-use" onClick={() => onUse(featured.imageUrl)}>
+              ✏️ Editar esta imagen
+            </button>
+          </div>
+        </div>
+      )}
+
+      {rest.length > 0 && (
+        <div className="token-grid">
+          {rest.map((t, i) => (
+            <div className="token-card" key={`${t.symbol}-${i}`}>
+              <div className="token-thumb">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={tokenImg(t.imageUrl)} alt={t.name} />
+                <button
+                  className="token-usebtn"
+                  onClick={() => onUse(t.imageUrl)}
+                  title="Usar en el editor"
+                  aria-label={`Editar ${t.symbol || t.name}`}
+                >
+                  ✏️
+                </button>
+              </div>
+              <div className="token-card-name">{t.symbol || t.name}</div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
