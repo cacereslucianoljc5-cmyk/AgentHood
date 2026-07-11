@@ -59,7 +59,8 @@ async function fetchImage(url: string, timeoutMs: number): Promise<Response | nu
   const c = new AbortController();
   const t = setTimeout(() => c.abort(), timeoutMs);
   try {
-    const r = await fetch(url, { signal: c.signal, next: { revalidate: 600 } });
+    // cache:"no-store" → evita que el Data Cache de Next corrompa el binario.
+    const r = await fetch(url, { signal: c.signal, cache: "no-store" });
     if (!r.ok) return null;
     const ct = r.headers.get("content-type") || "";
     if (!ct.startsWith("image/")) return null;
@@ -95,6 +96,7 @@ export async function GET(req: Request) {
     if (r) {
       const ct = r.headers.get("content-type") || "image/png";
       const buf = Buffer.from(await r.arrayBuffer());
+      console.log("token-image ok", ct, buf.length, "bytes");
       return new NextResponse(new Uint8Array(buf), {
         status: 200,
         headers: { "Content-Type": ct, "Cache-Control": "public, max-age=600" },
