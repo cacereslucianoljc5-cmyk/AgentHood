@@ -8,6 +8,22 @@ const ALLOWED = [
   "coingecko.com",
   "geckoterminal.com",
   "dexscreener.com",
+  "dexscreener.io",
+  // IPFS / CDNs comunes para imágenes de tokens de launchpads
+  "ipfs.io",
+  "cloudflare-ipfs.com",
+  "dweb.link",
+  "nftstorage.link",
+  "pinata.cloud",
+  "mypinata.cloud",
+  "ipfscdn.io",
+  "arweave.net",
+  "cloudfront.net",
+  "amazonaws.com",
+  "akamaized.net",
+  "imagedelivery.net",
+  "googleusercontent.com",
+  "robinhood.com",
 ];
 
 export async function GET(req: Request) {

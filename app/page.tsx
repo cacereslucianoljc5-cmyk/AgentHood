@@ -439,6 +439,41 @@ function tokenImg(url: string) {
   return `/api/token-image?url=${encodeURIComponent(url)}`;
 }
 
+// Muestra la imagen del token y, si falla la carga, cae a un avatar de letras.
+function TokenMedia({
+  token,
+  onUse,
+  big,
+}: {
+  token: TokenInfo;
+  onUse: (imageUrl: string) => void;
+  big?: boolean;
+}) {
+  const [broken, setBroken] = useState(false);
+  const ok = token.imageUrl && !broken;
+  const label = (token.symbol || token.name || "?").slice(0, 3);
+
+  if (!ok) {
+    return <div className={`token-avatar${big ? " big" : ""}`}>{label}</div>;
+  }
+  return (
+    <>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={tokenImg(token.imageUrl)} alt={token.name} onError={() => setBroken(true)} />
+      {!big && (
+        <button
+          className="token-usebtn"
+          onClick={() => onUse(token.imageUrl)}
+          title="Usar en el editor"
+          aria-label={`Editar ${token.symbol || token.name}`}
+        >
+          ✏️
+        </button>
+      )}
+    </>
+  );
+}
+
 function TokenFeed({ onUse }: { onUse: (imageUrl: string) => void }) {
   const [mode, setMode] = useState<"trending" | "new">("trending");
   const [win, setWin] = useState<"1h" | "6h" | "24h">("24h");
@@ -525,8 +560,7 @@ function TokenFeed({ onUse }: { onUse: (imageUrl: string) => void }) {
 
       {featured && (
         <div className="token-featured">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={tokenImg(featured.imageUrl)} alt={featured.name} />
+          <TokenMedia token={featured} onUse={onUse} big />
           <div className="token-featured-info">
             <div className="token-name">
               {featured.name} <span>{featured.symbol}</span>
@@ -542,9 +576,11 @@ function TokenFeed({ onUse }: { onUse: (imageUrl: string) => void }) {
                 )}
               </div>
             )}
-            <button className="btn token-use" onClick={() => onUse(featured.imageUrl)}>
-              ✏️ Editar esta imagen
-            </button>
+            {featured.imageUrl && (
+              <button className="btn token-use" onClick={() => onUse(featured.imageUrl)}>
+                ✏️ Editar esta imagen
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -554,16 +590,7 @@ function TokenFeed({ onUse }: { onUse: (imageUrl: string) => void }) {
           {rest.map((t, i) => (
             <div className="token-card" key={`${t.symbol}-${i}`}>
               <div className="token-thumb">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={tokenImg(t.imageUrl)} alt={t.name} />
-                <button
-                  className="token-usebtn"
-                  onClick={() => onUse(t.imageUrl)}
-                  title="Usar en el editor"
-                  aria-label={`Editar ${t.symbol || t.name}`}
-                >
-                  ✏️
-                </button>
+                <TokenMedia token={t} onUse={onUse} />
               </div>
               <div className="token-card-name">{t.symbol || t.name}</div>
             </div>
