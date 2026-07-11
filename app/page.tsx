@@ -440,6 +440,13 @@ function tokenImg(url: string) {
   return `/api/token-image?url=${encodeURIComponent(url)}`;
 }
 
+// Fondo degradado determinista para el avatar (según el símbolo del token).
+function avatarBg(seed: string) {
+  let h = 7;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 360;
+  return `linear-gradient(135deg, hsl(${h} 65% 42%), hsl(${(h + 45) % 360} 70% 24%))`;
+}
+
 // Muestra la imagen del token y, si falla la carga, cae a un avatar de letras.
 function TokenMedia({
   token,
@@ -455,7 +462,14 @@ function TokenMedia({
   const label = (token.symbol || token.name || "?").slice(0, 3);
 
   if (!ok) {
-    return <div className={`token-avatar${big ? " big" : ""}`}>{label}</div>;
+    return (
+      <div
+        className={`token-avatar${big ? " big" : ""}`}
+        style={{ background: avatarBg(token.symbol || token.name || "?"), color: "#fff" }}
+      >
+        {label}
+      </div>
+    );
   }
   return (
     <>
