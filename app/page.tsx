@@ -429,6 +429,7 @@ type TokenInfo = {
   name: string;
   symbol: string;
   imageUrl: string;
+  banner?: boolean;
   priceUsd: string | null;
   change24h: number | null;
   createdAt: string | null;
@@ -459,7 +460,12 @@ function TokenMedia({
   return (
     <>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={tokenImg(token.imageUrl)} alt={token.name} onError={() => setBroken(true)} />
+      <img
+        className={token.banner ? "tok-banner" : undefined}
+        src={tokenImg(token.imageUrl)}
+        alt={token.name}
+        onError={() => setBroken(true)}
+      />
       {!big && (
         <button
           className="token-usebtn"

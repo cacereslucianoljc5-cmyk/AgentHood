@@ -492,6 +492,10 @@ input[type="text"]:focus {
   color: #0a0f00;
   transform: scale(1.08);
 }
+/* Banners OG de DexScreener: encuadrar a la izquierda para ver el logo. */
+.tok-banner {
+  object-position: left center;
+}
 .token-avatar {
   width: 100%;
   height: 100%;

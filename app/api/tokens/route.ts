@@ -11,6 +11,7 @@ type Token = {
   name: string;
   symbol: string;
   imageUrl: string;
+  banner: boolean;
   address: string;
   priceUsd: string | null;
   change24h: number | null;
@@ -137,6 +138,7 @@ export async function GET(req: Request) {
       name: t?.name || a.name || "Token",
       symbol: t?.symbol || "",
       imageUrl,
+      banner: false,
       address: t?.address ? String(t.address) : "",
       priceUsd: a.base_token_price_usd ?? null,
       change24h: a.price_change_percentage?.h24 != null ? Number(a.price_change_percentage.h24) : null,
@@ -158,8 +160,18 @@ export async function GET(req: Request) {
     }
   }
 
-  // Los que tengan imagen primero (para el destacado), sin perder el orden.
-  tokens.sort((x, y) => Number(Boolean(y.imageUrl)) - Number(Boolean(x.imageUrl)));
+  // Respaldo: banner del CDN de DexScreener (se encuadra a la izquierda en el
+  // cliente para mostrar el logo). Si no existe, el cliente cae al avatar.
+  for (const t of tokens) {
+    if (!t.imageUrl && t.address) {
+      t.imageUrl = `https://cdn.dexscreener.com/token-images/og/${NET}/${t.address}`;
+      t.banner = true;
+    }
+  }
+
+  // Orden: iconos limpios primero, luego banners, luego sin imagen.
+  const score = (t: Token) => (t.imageUrl ? (t.banner ? 1 : 2) : 0);
+  tokens.sort((x, y) => score(y) - score(x));
 
   return NextResponse.json({ network: NET, mode, window: win, tokens: tokens.slice(0, 24) });
 }
