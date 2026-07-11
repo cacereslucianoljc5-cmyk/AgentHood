@@ -6,18 +6,73 @@ export const maxDuration = 60;
 
 // Uploads a user-provided reference image to a public host so Pollinations can
 // read it (its `image` param only accepts public URLs). Returns the direct URL.
+// Tries several anonymous hosts in order, since some reject cloud/datacenter IPs.
 async function uploadReference(file: File): Promise<string> {
-  const fd = new FormData();
-  fd.append("reqtype", "fileupload");
-  fd.append("fileToUpload", file, file.name || "reference.png");
-  const resp = await fetch("https://catbox.moe/user/api.php", {
-    method: "POST",
-    body: fd,
-  });
-  if (!resp.ok) throw new Error("upload failed");
-  const url = (await resp.text()).trim();
-  if (!/^https?:\/\//.test(url)) throw new Error("bad upload response");
-  return url;
+  const buf = Buffer.from(await file.arrayBuffer());
+  const name = file.name || "reference.png";
+  const type = file.type || "image/png";
+  const blob = () => new Blob([buf], { type });
+
+  // 1) tmpfiles.org — reliable from serverless; returns JSON.
+  try {
+    const fd = new FormData();
+    fd.append("file", blob(), name);
+    const r = await fetch("https://tmpfiles.org/api/v1/upload", {
+      method: "POST",
+      body: fd,
+    });
+    if (r.ok) {
+      const j = (await r.json()) as { data?: { url?: string } };
+      const u = j?.data?.url;
+      if (u) {
+        // Convert the page URL to a direct-download URL and force https.
+        return u
+          .replace("://tmpfiles.org/", "://tmpfiles.org/dl/")
+          .replace(/^http:/, "https:");
+      }
+    }
+    console.error("uploadReference tmpfiles failed", r.status);
+  } catch (e) {
+    console.error("uploadReference tmpfiles error", e);
+  }
+
+  // 2) 0x0.st — needs a User-Agent.
+  try {
+    const fd = new FormData();
+    fd.append("file", blob(), name);
+    const r = await fetch("https://0x0.st", {
+      method: "POST",
+      body: fd,
+      headers: { "User-Agent": "agenthood/1.0 (+https://agent-hood.vercel.app)" },
+    });
+    if (r.ok) {
+      const u = (await r.text()).trim();
+      if (/^https?:\/\//.test(u)) return u;
+    }
+    console.error("uploadReference 0x0 failed", r.status);
+  } catch (e) {
+    console.error("uploadReference 0x0 error", e);
+  }
+
+  // 3) catbox.moe — last resort (often blocks datacenter IPs).
+  try {
+    const fd = new FormData();
+    fd.append("reqtype", "fileupload");
+    fd.append("fileToUpload", blob(), name);
+    const r = await fetch("https://catbox.moe/user/api.php", {
+      method: "POST",
+      body: fd,
+    });
+    if (r.ok) {
+      const u = (await r.text()).trim();
+      if (/^https?:\/\//.test(u)) return u;
+    }
+    console.error("uploadReference catbox failed", r.status);
+  } catch (e) {
+    console.error("uploadReference catbox error", e);
+  }
+
+  throw new Error("all upload hosts failed");
 }
 
 // Returns a ready-to-load image URL (no branding/logo) for the given prompt.
@@ -39,7 +94,7 @@ export async function POST(req: Request) {
 
   let prompt = "";
   let ratio = "square";
-  let referenceUrl = "";
+  let referenceFile: File | null = null;
 
   const contentType = req.headers.get("content-type") || "";
   try {
@@ -55,18 +110,33 @@ export async function POST(req: Request) {
             { status: 400 }
           );
         }
-        referenceUrl = await uploadReference(file);
+        referenceFile = file;
       }
     } else {
       const body = (await req.json()) as { prompt?: string; ratio?: string };
       prompt = (body.prompt || "").trim();
       ratio = body.ratio || "square";
     }
-  } catch {
-    return NextResponse.json(
-      { error: "No se pudo procesar la imagen de referencia. Intenta de nuevo." },
-      { status: 400 }
-    );
+  } catch (e) {
+    console.error("image route: body parse failed", e);
+    return NextResponse.json({ error: "Cuerpo inválido" }, { status: 400 });
+  }
+
+  // Host the reference image so Pollinations can read it (public URL required).
+  let referenceUrl = "";
+  if (referenceFile) {
+    try {
+      referenceUrl = await uploadReference(referenceFile);
+    } catch (e) {
+      console.error("image route: reference upload failed", e);
+      return NextResponse.json(
+        {
+          error:
+            "No se pudo subir la imagen de referencia ahora mismo. Intenta con otra imagen o genera sin referencia.",
+        },
+        { status: 502 }
+      );
+    }
   }
 
   if (!prompt) {
