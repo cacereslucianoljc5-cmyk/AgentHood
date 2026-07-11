@@ -4,73 +4,54 @@ import { checkAndConsume, getClientIp, LIMITS } from "@/lib/ratelimit";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-// Free Google AI Studio key (aistudio.google.com) — Gemini 2.5 Flash Image
-// ("Nano Banana") does real image editing on the free tier (up to 500/day).
-// Set as GEMINI_API_KEY in Vercel.
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY?.trim();
-const GEMINI_MODEL = "gemini-2.5-flash-image";
+// Cloudflare Workers AI (free tier, no card). Set both in Vercel:
+//   CLOUDFLARE_ACCOUNT_ID  — your account id (dash → Workers & Pages → AI)
+//   CLOUDFLARE_API_TOKEN   — an API token with "Workers AI" read permission
+const CF_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
+const CF_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN?.trim();
+const CF_MODEL = "@cf/runwayml/stable-diffusion-v1-5-img2img";
 
 type EditedImage = { data: Buffer; mime: string };
 
-// Edits an image with Gemini: sends the image inline (base64) + instruction,
-// returns the edited image bytes. No external file hosting needed.
-async function editWithGemini(
-  instruction: string,
-  buf: Buffer,
-  mime: string
-): Promise<EditedImage> {
+// Regenerates the reference image guided by the prompt (image-to-image).
+async function editWithCloudflare(instruction: string, buf: Buffer): Promise<EditedImage> {
+  const url = `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/run/${CF_MODEL}`;
   const body = {
-    contents: [
-      {
-        parts: [
-          {
-            text:
-              `${instruction}. Aplica solo ese cambio y mantén el resto de la imagen ` +
-              `igual: mismo sujeto, estilo, colores, iluminación y composición.`,
-          },
-          { inline_data: { mime_type: mime, data: buf.toString("base64") } },
-        ],
-      },
-    ],
+    prompt: instruction,
+    image: Array.from(new Uint8Array(buf)),
+    strength: 0.55, // keep composition, apply the prompt
+    guidance: 7.5,
+    num_steps: 20,
   };
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
   const resp = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      Authorization: `Bearer ${CF_API_TOKEN}`,
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(body),
   });
 
   if (!resp.ok) {
     const detail = await resp.text().catch(() => "");
-    console.error("gemini failed", resp.status, detail.slice(0, 400));
-    throw new Error("gemini " + resp.status);
+    console.error("cloudflare failed", resp.status, detail.slice(0, 400));
+    throw new Error("cloudflare " + resp.status);
   }
 
-  const data = (await resp.json().catch(() => null)) as {
-    candidates?: {
-      content?: {
-        parts?: {
-          inlineData?: { data?: string; mimeType?: string };
-          inline_data?: { data?: string; mime_type?: string };
-        }[];
-      };
-    }[];
-  } | null;
-
-  const parts = data?.candidates?.[0]?.content?.parts || [];
-  for (const p of parts) {
-    const inline = p.inlineData || p.inline_data;
-    const b64 = inline?.data;
-    if (b64) {
-      const outMime =
-        (p.inlineData?.mimeType || p.inline_data?.mime_type) ?? "image/png";
-      return { data: Buffer.from(b64, "base64"), mime: outMime };
-    }
+  const ctype = resp.headers.get("content-type") || "";
+  // Some models reply with JSON { result: { image: <base64> } }, others with raw bytes.
+  if (ctype.includes("application/json")) {
+    const j = (await resp.json().catch(() => null)) as
+      | { result?: { image?: string }; success?: boolean; errors?: unknown }
+      | null;
+    const b64 = j?.result?.image;
+    if (b64) return { data: Buffer.from(b64, "base64"), mime: "image/png" };
+    console.error("cloudflare json without image", JSON.stringify(j).slice(0, 400));
+    throw new Error("cloudflare no image");
   }
-
-  console.error("gemini: no image in response", JSON.stringify(data).slice(0, 400));
-  throw new Error("no image in response");
+  const out = Buffer.from(await resp.arrayBuffer());
+  return { data: out, mime: ctype.startsWith("image/") ? ctype : "image/png" };
 }
 
 const SIZES: Record<string, [number, number]> = {
@@ -130,13 +111,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "La descripción es demasiado larga" }, { status: 400 });
   }
 
-  // ---------- Real image editing with Gemini (Nano Banana) ----------
+  // ---------- Image-to-image with Cloudflare Workers AI ----------
   if (referenceFile) {
-    if (!GEMINI_API_KEY) {
+    if (!CF_ACCOUNT_ID || !CF_API_TOKEN) {
       return NextResponse.json(
         {
           error:
-            "La edición de imágenes aún no está activada. Falta configurar la API key de Gemini (GEMINI_API_KEY) en Vercel.",
+            "La edición de imágenes aún no está activada. Falta configurar CLOUDFLARE_ACCOUNT_ID y CLOUDFLARE_API_TOKEN en Vercel.",
         },
         { status: 400 }
       );
@@ -146,14 +127,13 @@ export async function POST(req: Request) {
     const timeout = setTimeout(() => controller.abort(), 55_000);
     try {
       const buf = Buffer.from(await referenceFile.arrayBuffer());
-      const mime = referenceFile.type || "image/jpeg";
-      const edited = await editWithGemini(prompt, buf, mime);
+      const edited = await editWithCloudflare(prompt, buf);
       return new NextResponse(new Uint8Array(edited.data), {
         status: 200,
         headers: { "Content-Type": edited.mime, "Cache-Control": "no-store" },
       });
     } catch (e) {
-      console.error("image route: gemini edit failed", e);
+      console.error("image route: cloudflare edit failed", e);
       return NextResponse.json(
         { error: "El editor de IA no pudo procesar la imagen. Intenta de nuevo o con otra descripción." },
         { status: 502 }
@@ -163,7 +143,7 @@ export async function POST(req: Request) {
     }
   }
 
-  // ---------- Text-to-image (flux, gratis) ----------
+  // ---------- Text-to-image (flux, gratis, sin key) ----------
   const [width, height] = SIZES[ratio] || SIZES.square;
   const seed = (Date.now() % 1_000_000) + prompt.length;
   const params = new URLSearchParams({

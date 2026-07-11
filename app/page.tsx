@@ -174,7 +174,7 @@ function ImageTab() {
 
   // Shrink the image in the browser before uploading: keeps the payload small
   // and the vision analysis fast.
-  async function downscaleImage(file: File, maxDim = 1024): Promise<Blob> {
+  async function downscaleImage(file: File, maxDim = 768): Promise<Blob> {
     const bitmap = await createImageBitmap(file);
     const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
     const w = Math.max(1, Math.round(bitmap.width * scale));
