@@ -59,6 +59,22 @@ async function getEthUsd(): Promise<number | null> {
   }
 }
 
+// Convierte una URI de logo (ipfs://CID, CID pelado, o http) a URL servible.
+function normalizeLogo(logo: unknown): string {
+  if (!logo || typeof logo !== "string") return "";
+  let s = logo.trim();
+  if (s.startsWith("ipfs://")) {
+    s = s.slice(7);
+    if (s.startsWith("ipfs/")) s = s.slice(5);
+    return `https://ipfs.io/ipfs/${s}`;
+  }
+  if (/^https?:\/\//.test(s)) return s;
+  if (/^(baf[a-z0-9]+|Qm[1-9A-HJ-NP-Za-km-z]{44})/.test(s)) {
+    return `https://ipfs.io/ipfs/${s}`;
+  }
+  return "";
+}
+
 // --- Fuente principal: NOXA ---
 async function fetchNoxa(sort: string, limit: number): Promise<any[]> {
   const url = `${NOXA_BASE}/v1/${NET}/tokens?sort=${sort}&order=desc&limit=${limit}&hasImage=true`;
@@ -88,7 +104,7 @@ function mapNoxa(rows: any[], ethUsd: number | null): Token[] {
     out.push({
       name: d.name || "Token",
       symbol: d.symbol || "",
-      imageUrl: d.logo ? String(d.logo) : "",
+      imageUrl: normalizeLogo(d.logo),
       address: d.address ? String(d.address) : "",
       priceUsd,
       change24h: null,
@@ -161,7 +177,7 @@ export async function GET(req: Request) {
       const cutoff = Date.now() - windowMs(win);
       tokens = tokens.filter((t) => t.createdAtMs == null || t.createdAtMs >= cutoff);
     }
-    if (rows[0]?.logo) console.log("noxa logo sample:", String(rows[0].logo).slice(0, 120));
+    if (tokens[0]?.imageUrl) console.log("noxa img sample:", tokens[0].imageUrl.slice(0, 140));
   }
 
   // 2) Respaldo GeckoTerminal si NOXA no dio nada.
