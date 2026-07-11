@@ -134,6 +134,14 @@ export async function GET(req: Request) {
     }
   }
 
+  // Fallback: icono directo del CDN de DexScreener (lo que muestra su screener
+  // para tokens recién lanzados). Si no existe, el cliente cae al avatar.
+  for (const t of tokens) {
+    if (!t.imageUrl && t.address) {
+      t.imageUrl = `https://dd.dexscreener.com/ds-data/tokens/${NET}/${t.address}.png`;
+    }
+  }
+
   // Los que tengan imagen primero (para el destacado), sin perder el orden.
   tokens.sort((x, y) => Number(Boolean(y.imageUrl)) - Number(Boolean(x.imageUrl)));
 
