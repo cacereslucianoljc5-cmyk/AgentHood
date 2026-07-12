@@ -170,6 +170,10 @@ input[type="text"]:focus {
   border-radius: 12px;
   padding: 0 22px;
   min-height: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   transition: transform 0.12s ease, box-shadow 0.15s ease, opacity 0.15s;
   box-shadow: var(--glow);
 }
@@ -353,6 +357,12 @@ input[type="text"]:focus {
   font-size: 20px;
   font-weight: 800;
   letter-spacing: -0.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.token-head h2 svg {
+  color: var(--neon);
 }
 .token-sub {
   color: var(--text-dim);
@@ -374,6 +384,9 @@ input[type="text"]:focus {
   font-size: 13.5px;
   font-weight: 600;
   transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 .token-filter:hover {
   color: var(--text);

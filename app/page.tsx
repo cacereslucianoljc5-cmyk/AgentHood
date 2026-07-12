@@ -68,6 +68,43 @@ function IconUpload({ size = 16 }: { size?: number }) {
   );
 }
 
+function IconEdit({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />
+    </svg>
+  );
+}
+
+function IconFlame({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
+    </svg>
+  );
+}
+
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -146,7 +183,7 @@ function Wordmark() {
         />
       )}
       <div className="tagline">
-        Imagina. <b>Describe</b>. <b>Crea</b>.
+        Imagine. <b>Describe</b>. <b>Create</b>.
       </div>
     </div>
   );
@@ -200,11 +237,11 @@ function ImageTab() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith("image/")) {
-      setError("El archivo debe ser una imagen.");
+      setError("The file must be an image.");
       return;
     }
     if (file.size > 8_000_000) {
-      setError("La imagen de referencia es demasiado grande (máx 8 MB).");
+      setError("The reference image is too large (max 8 MB).");
       return;
     }
     setError("");
@@ -245,7 +282,7 @@ function ImageTab() {
       setRefPreview(URL.createObjectURL(blob));
       editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch {
-      setError("No se pudo cargar la imagen del token. Prueba con otro.");
+      setError("Couldn't load the token image. Try another one.");
     }
   }
 
@@ -253,7 +290,7 @@ function ImageTab() {
     const text = prompt.trim();
     if (!text || loading) return;
     if (counter.remaining <= 0) {
-      setError("Has alcanzado tu límite diario de imágenes. Vuelve mañana.");
+      setError("You've reached your daily image limit. Come back tomorrow.");
       return;
     }
     setError("");
@@ -278,7 +315,7 @@ function ImageTab() {
       }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError(data.error || "Algo salió mal.");
+        setError(data.error || "Something went wrong.");
         setLoading(false);
         return;
       }
@@ -304,12 +341,12 @@ function ImageTab() {
         setLoading(false);
       };
       im.onerror = () => {
-        setError("No se pudo generar la imagen. Intenta otra descripción.");
+        setError("Couldn't generate the image. Try another description.");
         setLoading(false);
       };
       im.src = data.url;
     } catch {
-      setError("Error de red. Revisa tu conexión.");
+      setError("Network error. Check your connection.");
       setLoading(false);
     }
   }
@@ -324,7 +361,7 @@ function ImageTab() {
     <>
     <div className="panel" ref={editorRef}>
       <div className="limit-pill">
-        <IconImage size={15} /> Imágenes hoy: <b>{counter.remaining}</b> / {IMAGE_LIMIT} restantes
+        <IconImage size={15} /> Images today: <b>{counter.remaining}</b> / {IMAGE_LIMIT} left
       </div>
 
       <div className="ref-row">
@@ -357,7 +394,7 @@ function ImageTab() {
             onClick={() => fileInputRef.current?.click()}
             disabled={loading}
           >
-            <IconUpload size={16} /> Subir imagen de referencia (opcional)
+            <IconUpload size={16} /> Upload a reference image (optional)
           </button>
         )}
       </div>
@@ -369,8 +406,8 @@ function ImageTab() {
         onKeyDown={(e) => e.key === "Enter" && generate()}
         placeholder={
           refFile
-            ? "Describe cómo transformar tu imagen (ej. estilo acuarela, fondo neón)..."
-            : "Un astronauta neón montando una moto en Marte, estilo cyberpunk..."
+            ? "Describe how to transform your image (e.g. watercolor style, neon background)..."
+            : "A neon astronaut riding a motorcycle on Mars, cyberpunk style..."
         }
         disabled={loading}
       />
@@ -393,7 +430,7 @@ function ImageTab() {
           onClick={generate}
           disabled={loading || !prompt.trim()}
         >
-          {loading ? "Generando..." : refFile ? "Transformar imagen" : "Generar imagen"}
+          {loading ? "Generating..." : refFile ? "Transform image" : "Generate image"}
         </button>
       </div>
       {error && <div className="error">{error}</div>}
@@ -402,7 +439,7 @@ function ImageTab() {
           <div style={{ textAlign: "center" }}>
             <div className="spinner" style={{ margin: "0 auto 14px" }} />
             <div style={{ color: "var(--text-dim)" }}>
-              Creando tu imagen<span className="dots" />
+              Creating your image<span className="dots" />
             </div>
           </div>
         ) : imgUrl ? (
@@ -410,13 +447,13 @@ function ImageTab() {
           <img src={imgUrl} alt={prompt} />
         ) : (
           <div className="stage-hint">
-            Describe una imagen y pulsa <b>Generar</b>
+            Describe an image and hit <b>Generate</b>
           </div>
         )}
       </div>
       {imgUrl && !loading && (
         <a className="download" href={imgUrl} target="_blank" rel="noreferrer" download>
-          <IconDownload size={15} /> Abrir / descargar imagen
+          <IconDownload size={15} /> Open / download image
         </a>
       )}
     </div>
@@ -509,10 +546,10 @@ function TokenMedia({
         <button
           className="token-usebtn"
           onClick={() => onUse(token.imageUrl)}
-          title="Usar en el editor"
-          aria-label={`Editar ${token.symbol || token.name}`}
+          title="Load into editor"
+          aria-label={`Edit ${token.symbol || token.name}`}
         >
-          ✏️
+          <IconEdit size={14} />
         </button>
       )}
     </>
@@ -557,7 +594,7 @@ function TokenFeed({ onUse }: { onUse: (imageUrl: string) => void }) {
   }, [mode, win]);
 
   const filters: { key: string; label: string }[] = [
-    { key: "trending", label: "🔥 Trending" },
+    { key: "trending", label: "Trending" },
     { key: "1h", label: "1h" },
     { key: "6h", label: "6h" },
     { key: "24h", label: "24h" },
@@ -577,8 +614,10 @@ function TokenFeed({ onUse }: { onUse: (imageUrl: string) => void }) {
   return (
     <div className="token-feed">
       <div className="token-head">
-        <h2>🚀 Hood Trending</h2>
-        <span className="token-sub">Memecoins en vivo · toca ✏️ para editar</span>
+        <h2>
+          <IconFlame size={18} /> Hood Trending
+        </h2>
+        <span className="token-sub">Live memecoins · tap to edit</span>
       </div>
 
       <div className="token-filters">
@@ -588,6 +627,7 @@ function TokenFeed({ onUse }: { onUse: (imageUrl: string) => void }) {
             className={`token-filter ${active === f.key ? "active" : ""}`}
             onClick={() => selectFilter(f.key)}
           >
+            {f.key === "trending" && <IconFlame size={14} />}
             {f.label}
           </button>
         ))}
@@ -600,7 +640,7 @@ function TokenFeed({ onUse }: { onUse: (imageUrl: string) => void }) {
         </div>
       )}
       {!loading && !error && tokens.length === 0 && (
-        <div className="stage-hint">No hay tokens con imagen en esta ventana.</div>
+        <div className="stage-hint">No tokens in this window.</div>
       )}
 
       {featured && (
@@ -623,7 +663,7 @@ function TokenFeed({ onUse }: { onUse: (imageUrl: string) => void }) {
             )}
             {featured.imageUrl && (
               <button className="btn token-use" onClick={() => onUse(featured.imageUrl)}>
-                ✏️ Editar esta imagen
+                <IconEdit size={15} /> Edit this image
               </button>
             )}
           </div>
@@ -652,9 +692,9 @@ export default function Page() {
       <Header />
       <ImageTab />
       <div className="footer">
-        AgentHood · Generador de imágenes con IA · límites diarios
+        AgentHood · AI image generator · daily limits
         <br />
-        Uso responsable — no generes contenido dañino o ilegal.
+        Use responsibly — don&apos;t generate harmful or illegal content.
       </div>
     </div>
   );

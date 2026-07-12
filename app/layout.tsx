@@ -2,15 +2,15 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AgentHood — Genera imágenes con IA",
+  title: "AgentHood — Generate images with AI",
   description:
-    "AgentHood: generador de imágenes con IA gratuito. Describe lo que imaginas y crea imágenes al instante. Rápido, gratis y sin complicaciones.",
+    "AgentHood: free AI image generator. Describe what you imagine and create images instantly. Fast, free and hassle-free.",
   icons: {
     icon: "/favicon.svg",
   },
   openGraph: {
-    title: "AgentHood — Genera imágenes con IA",
-    description: "Generación de imágenes con IA, gratis.",
+    title: "AgentHood — Generate images with AI",
+    description: "AI image generation, free.",
     type: "website",
   },
 };
@@ -21,7 +21,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="es">
+    <html lang="en">
       <body>{children}</body>
     </html>
   );

@@ -39,7 +39,7 @@ async function editWithCloudflare(
     const err = new Error("cloudflare " + resp.status) as Error & { userMessage?: string };
     if (/flagged|3030/i.test(detail)) {
       err.userMessage =
-        "El filtro de contenido de la IA bloqueó esta imagen (suele pasar con armas, violencia o contenido sensible). Prueba con otra imagen o cambia la descripción.";
+        "The AI content filter blocked this image (common with weapons, violence or sensitive content). Try another image or change the description.";
     }
     throw err;
   }
@@ -71,7 +71,7 @@ export async function POST(req: Request) {
   if (!rate.allowed) {
     return NextResponse.json(
       {
-        error: `Has alcanzado el límite diario de ${LIMITS.image} imágenes. Vuelve mañana.`,
+        error: `You've reached the daily limit of ${LIMITS.image} images. Come back tomorrow.`,
         remaining: 0,
         limit: LIMITS.image,
       },
@@ -93,7 +93,7 @@ export async function POST(req: Request) {
       if (file && typeof file !== "string" && file.size > 0) {
         if (file.size > 8_000_000) {
           return NextResponse.json(
-            { error: "La imagen de referencia es demasiado grande (máx 8 MB)." },
+            { error: "The reference image is too large (max 8 MB)." },
             { status: 400 }
           );
         }
@@ -106,14 +106,14 @@ export async function POST(req: Request) {
     }
   } catch (e) {
     console.error("image route: body parse failed", e);
-    return NextResponse.json({ error: "Cuerpo inválido" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
 
   if (!prompt) {
-    return NextResponse.json({ error: "Escribe una descripción" }, { status: 400 });
+    return NextResponse.json({ error: "Write a description" }, { status: 400 });
   }
   if (prompt.length > 800) {
-    return NextResponse.json({ error: "La descripción es demasiado larga" }, { status: 400 });
+    return NextResponse.json({ error: "The description is too long" }, { status: 400 });
   }
 
   // ---------- Image-to-image with Cloudflare Workers AI ----------
@@ -122,7 +122,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           error:
-            "La edición de imágenes aún no está activada. Falta configurar CLOUDFLARE_ACCOUNT_ID y CLOUDFLARE_API_TOKEN en Vercel.",
+            "Image editing isn't enabled yet. CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN need to be set in Vercel.",
         },
         { status: 400 }
       );
@@ -145,7 +145,7 @@ export async function POST(req: Request) {
         {
           error:
             userMessage ||
-            "El editor de IA no pudo procesar la imagen. Intenta de nuevo o con otra descripción.",
+            "The AI editor couldn't process the image. Try again or a different description.",
         },
         { status: 502 }
       );

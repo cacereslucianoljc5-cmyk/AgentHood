@@ -86,13 +86,13 @@ export async function GET(req: Request) {
   try {
     target = new URL(raw);
   } catch {
-    return NextResponse.json({ error: "url inválida" }, { status: 400 });
+    return NextResponse.json({ error: "invalid url" }, { status: 400 });
   }
   if (target.protocol !== "https:") {
-    return NextResponse.json({ error: "solo https" }, { status: 400 });
+    return NextResponse.json({ error: "https only" }, { status: 400 });
   }
   if (!hostAllowed(target.hostname)) {
-    return NextResponse.json({ error: "host no permitido" }, { status: 400 });
+    return NextResponse.json({ error: "host not allowed" }, { status: 400 });
   }
 
   // gmgn.ai bloquea la IP de datacenter (Cloudflare), pero el navegador del
@@ -110,7 +110,6 @@ export async function GET(req: Request) {
     if (r) {
       const ct = r.headers.get("content-type") || "image/png";
       const buf = Buffer.from(await r.arrayBuffer());
-      console.log("token-image ok", ct, buf.length, "bytes");
       return new NextResponse(new Uint8Array(buf), {
         status: 200,
         headers: { "Content-Type": ct, "Cache-Control": "public, max-age=600" },
@@ -119,5 +118,5 @@ export async function GET(req: Request) {
   }
 
   console.error("token-image: todos los gateways fallaron", cid || target.hostname);
-  return NextResponse.json({ error: "no encontrada" }, { status: 502 });
+  return NextResponse.json({ error: "not found" }, { status: 502 });
 }
