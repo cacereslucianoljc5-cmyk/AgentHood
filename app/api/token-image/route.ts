@@ -60,8 +60,15 @@ async function fetchImage(url: string, timeoutMs: number): Promise<Response | nu
   const c = new AbortController();
   const t = setTimeout(() => c.abort(), timeoutMs);
   try {
+    // Cabeceras de navegador → deja pasar imágenes tras Cloudflare/CDN (gmgn.ai).
+    const headers: Record<string, string> = {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+      Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+    };
+    if (url.includes("gmgn.ai")) headers.Referer = "https://gmgn.ai/";
     // cache:"no-store" → evita que el Data Cache de Next corrompa el binario.
-    const r = await fetch(url, { signal: c.signal, cache: "no-store" });
+    const r = await fetch(url, { signal: c.signal, cache: "no-store", headers });
     if (!r.ok) return null;
     const ct = r.headers.get("content-type") || "";
     if (!ct.startsWith("image/")) return null;
