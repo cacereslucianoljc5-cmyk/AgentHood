@@ -95,6 +95,12 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "host no permitido" }, { status: 400 });
   }
 
+  // gmgn.ai bloquea la IP de datacenter (Cloudflare), pero el navegador del
+  // usuario sí puede cargarla → redirigimos para que la traiga el navegador.
+  if (target.hostname === "gmgn.ai" || target.hostname.endsWith(".gmgn.ai")) {
+    return NextResponse.redirect(target.toString(), 302);
+  }
+
   // Lista de candidatos: si es IPFS, probar varios gateways; si no, la URL tal cual.
   const cid = ipfsPath(target);
   const candidates = cid ? IPFS_GATEWAYS.map((g) => g + cid) : [target.toString()];
