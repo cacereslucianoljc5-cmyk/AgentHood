@@ -178,9 +178,19 @@ export async function GET(req: Request) {
     const all = mapNoxa(rows, ethUsd);
     if (mode === "new") {
       const cutoff = Date.now() - windowMs(win);
-      tokens = all
+      const cap = win === "1h" ? 8 : win === "6h" ? 16 : 24;
+      const byNewest = (a: Token, b: Token) => (b.createdAtMs || 0) - (a.createdAtMs || 0);
+      const within = all
         .filter((t) => t.createdAtMs != null && t.createdAtMs >= cutoff)
-        .sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+        .sort(byNewest);
+      if (within.length >= cap) {
+        tokens = within.slice(0, cap);
+      } else {
+        // Completa con los más nuevos disponibles para no dejar la ventana vacía.
+        const seen = new Set(within.map((t) => t.address));
+        const extra = all.filter((t) => !seen.has(t.address)).sort(byNewest);
+        tokens = within.concat(extra).slice(0, cap);
+      }
     } else {
       tokens = all;
     }
