@@ -77,8 +77,10 @@ function normalizeLogo(logo: unknown): string {
 }
 
 // --- Fuente principal: NOXA ---
-async function fetchNoxa(sort: string, limit: number): Promise<any[]> {
-  const url = `${NOXA_BASE}/v1/${NET}/tokens?sort=${sort}&order=desc&limit=${limit}&hasImage=true`;
+async function fetchNoxa(sort: string, limit: number, hasImage: boolean): Promise<any[]> {
+  const url = `${NOXA_BASE}/v1/${NET}/tokens?sort=${sort}&order=desc&limit=${limit}${
+    hasImage ? "&hasImage=true" : ""
+  }`;
   try {
     const r = await fetch(url, {
       headers: { "User-Agent": "AgentHood/1.0", Accept: "application/json" },
@@ -167,28 +169,24 @@ export async function GET(req: Request) {
 
   let tokens: Token[] = [];
 
-  // 1) NOXA (logo real del creador).
+  // 1) NOXA (logo real del creador). Fuente autoritativa.
   const [rows, ethUsd] = await Promise.all([
-    fetchNoxa(mode === "new" ? "newest" : "volume", mode === "new" ? 100 : 40),
+    fetchNoxa(mode === "new" ? "newest" : "volume", mode === "new" ? 100 : 40, mode !== "new"),
     getEthUsd(),
   ]);
   if (rows.length) {
     const all = mapNoxa(rows, ethUsd);
     if (mode === "new") {
       const cutoff = Date.now() - windowMs(win);
-      const filtered = all.filter((t) => t.createdAtMs != null && t.createdAtMs >= cutoff);
-      // Si el filtro deja muy pocos (parseo de fecha dudoso), muestra los más nuevos.
-      tokens = filtered.length >= 3 ? filtered : all;
+      tokens = all
+        .filter((t) => t.createdAtMs != null && t.createdAtMs >= cutoff)
+        .sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
     } else {
       tokens = all;
     }
-    console.log(
-      `tokens: mode=${mode} noxaRows=${rows.length} sent=${tokens.length} withImg=${tokens.filter((t) => t.imageUrl).length} rawCreated=${JSON.stringify(rows[0]?.createdAtTime)}`
-    );
-  }
-
-  // 2) Respaldo GeckoTerminal si NOXA no dio nada.
-  if (!tokens.length) {
+    console.log(`tokens noxa: mode=${mode} win=${win} rows=${rows.length} sent=${tokens.length}`);
+  } else {
+    // 2) Respaldo GeckoTerminal solo si NOXA no respondió.
     tokens = await fetchGecko(mode);
     if (mode === "new") {
       const cutoff = Date.now() - windowMs(win);
