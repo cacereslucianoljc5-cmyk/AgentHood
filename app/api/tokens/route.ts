@@ -211,6 +211,8 @@ async function enrichMissingLogos(tokens: Token[]): Promise<void> {
       if (im) t.imageUrl = normalizeLogo(im);
     }
   }
+  const stillMissing = tokens.filter((t) => !t.imageUrl).length;
+  console.log(`enrich: missing=${uniq.length} found=${map.size} stillMissing=${stillMissing}`);
 }
 
 export async function GET(req: Request) {

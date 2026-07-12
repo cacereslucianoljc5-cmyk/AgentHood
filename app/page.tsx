@@ -429,6 +429,7 @@ type TokenInfo = {
   name: string;
   symbol: string;
   imageUrl: string;
+  address?: string;
   banner?: boolean;
   priceUsd: string | null;
   change24h: number | null;
@@ -440,11 +441,35 @@ function tokenImg(url: string) {
   return `/api/token-image?url=${encodeURIComponent(url)}`;
 }
 
-// Fondo degradado determinista para el avatar (según el símbolo del token).
-function avatarBg(seed: string) {
-  let h = 7;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 360;
-  return `linear-gradient(135deg, hsl(${h} 65% 42%), hsl(${(h + 45) % 360} 70% 24%))`;
+// Genera un identicon SVG determinista (patrón simétrico tipo GitHub/MetaMask)
+// para tokens sin logo. Devuelve un data-URI usable como imagen de fondo.
+function identiconUri(seed: string): string {
+  let h = 5381;
+  for (let i = 0; i < seed.length; i++) h = ((h << 5) + h + seed.charCodeAt(i)) >>> 0;
+  const hue = h % 360;
+  const fg = `hsl(${hue},72%,60%)`;
+  const bg = `hsl(${hue},38%,13%)`;
+  let rng = h || 1;
+  const next = () => {
+    rng = (Math.imul(rng, 1103515245) + 12345) & 0x7fffffff;
+    return rng;
+  };
+  const n = 5;
+  const s = 64;
+  const cell = s / n;
+  let rects = "";
+  for (let x = 0; x < Math.ceil(n / 2); x++) {
+    for (let y = 0; y < n; y++) {
+      if (next() % 2 === 0) {
+        const cols = x === n - 1 - x ? [x] : [x, n - 1 - x];
+        for (const cx of cols) {
+          rects += `<rect x='${cx * cell}' y='${y * cell}' width='${cell}' height='${cell}'/>`;
+        }
+      }
+    }
+  }
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${s}' height='${s}'><rect width='${s}' height='${s}' fill='${bg}'/><g fill='${fg}'>${rects}</g></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
 // Muestra la imagen del token y, si falla la carga, cae a un avatar de letras.
@@ -461,16 +486,18 @@ function TokenMedia({
   useEffect(() => {
     setBroken(false);
   }, [token.imageUrl]);
-  const label = (token.symbol || token.name || "?").slice(0, 3);
 
   if (!token.imageUrl || broken) {
+    const seed = token.address || `${token.symbol}${token.name}`;
     return (
       <div
         className={`token-avatar${big ? " big" : ""}`}
-        style={{ background: avatarBg(token.symbol || token.name || "?"), color: "#fff" }}
-      >
-        {label}
-      </div>
+        style={{
+          backgroundImage: `url("${identiconUri(seed)}")`,
+          backgroundSize: "cover",
+        }}
+        aria-label={token.name}
+      />
     );
   }
   return (
