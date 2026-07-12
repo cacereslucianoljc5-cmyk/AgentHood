@@ -441,34 +441,30 @@ function tokenImg(url: string) {
   return `/api/token-image?url=${encodeURIComponent(url)}`;
 }
 
-// Genera un identicon SVG determinista (patrón simétrico tipo GitHub/MetaMask)
-// para tokens sin logo. Devuelve un data-URI usable como imagen de fondo.
+// Genera un "jazzicon" SVG determinista (estilo MetaMask: color base + formas
+// giradas de colores) para tokens sin logo. Se ve como un icono real.
 function identiconUri(seed: string): string {
-  let h = 5381;
-  for (let i = 0; i < seed.length; i++) h = ((h << 5) + h + seed.charCodeAt(i)) >>> 0;
-  const hue = h % 360;
-  const fg = `hsl(${hue},72%,60%)`;
-  const bg = `hsl(${hue},38%,13%)`;
-  let rng = h || 1;
-  const next = () => {
-    rng = (Math.imul(rng, 1103515245) + 12345) & 0x7fffffff;
-    return rng;
-  };
-  const n = 5;
-  const s = 64;
-  const cell = s / n;
-  let rects = "";
-  for (let x = 0; x < Math.ceil(n / 2); x++) {
-    for (let y = 0; y < n; y++) {
-      if (next() % 2 === 0) {
-        const cols = x === n - 1 - x ? [x] : [x, n - 1 - x];
-        for (const cx of cols) {
-          rects += `<rect x='${cx * cell}' y='${y * cell}' width='${cell}' height='${cell}'/>`;
-        }
-      }
-    }
+  let s = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    s ^= seed.charCodeAt(i);
+    s = Math.imul(s, 16777619) >>> 0;
   }
-  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${s}' height='${s}'><rect width='${s}' height='${s}' fill='${bg}'/><g fill='${fg}'>${rects}</g></svg>`;
+  const rnd = () => {
+    s = (Math.imul(s, 1103515245) + 12345) >>> 0;
+    return s / 0xffffffff;
+  };
+  const baseHue = Math.floor(rnd() * 360);
+  const bg = `hsl(${baseHue} 68% 52%)`;
+  let shapes = "";
+  for (let i = 0; i < 4; i++) {
+    const hue = (baseHue + Math.floor((rnd() * 2 - 1) * 150) + 360) % 360;
+    const col = `hsl(${hue} 72% ${44 + Math.floor(rnd() * 22)}%)`;
+    const tx = Math.floor((rnd() * 2 - 1) * 60);
+    const ty = Math.floor((rnd() * 2 - 1) * 60);
+    const rot = Math.floor(rnd() * 360);
+    shapes += `<rect x='-16' y='-16' width='96' height='96' fill='${col}' transform='translate(${tx} ${ty}) rotate(${rot} 32 32)'/>`;
+  }
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><rect width='64' height='64' fill='${bg}'/>${shapes}</svg>`;
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
