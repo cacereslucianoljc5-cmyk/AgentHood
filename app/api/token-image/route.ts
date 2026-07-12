@@ -12,6 +12,7 @@ const ALLOWED = [
   "dexscreener.io",
   "noxa.fi",
   "notoriouslywrong.com",
+  "gmgn.ai",
   // IPFS / CDNs
   "ipfs.io",
   "dweb.link",

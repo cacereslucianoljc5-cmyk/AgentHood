@@ -1,7 +1,40 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// GMGN OpenAPI (openapi.gmgn.ai) — API oficial de servidor (sin el Cloudflare
+// de la web). Con GMGN_API_KEY devuelve el logo de casi cualquier token.
+const GMGN_KEY = process.env.GMGN_API_KEY?.trim();
+
+async function gmgnLogo(address: string): Promise<string> {
+  if (!GMGN_KEY) return "";
+  const ts = Math.floor(Date.now() / 1000);
+  const url = `https://openapi.gmgn.ai/v1/token/info?chain=${NET}&address=${address}&timestamp=${ts}&client_id=${randomUUID()}`;
+  try {
+    const r = await fetch(url, {
+      headers: {
+        "X-APIKEY": GMGN_KEY,
+        "Content-Type": "application/json",
+        "User-Agent": "agenthood/1.0",
+      },
+      cache: "no-store",
+    });
+    if (!r.ok) {
+      console.error("gmgn token/info", r.status);
+      return "";
+    }
+    /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+    const j: any = await r.json();
+    const d = j?.data ?? {};
+    const logo = d.logo || d.token?.logo || d.token_info?.logo || d.image_url || "";
+    return logo ? String(logo) : "";
+  } catch (e) {
+    console.error("gmgn error", e);
+    return "";
+  }
+}
 
 // Fuente principal: backend público del launchpad NOXA (fun.noxa.fi), que trae
 // el LOGO real que sube el creador para cada token de Robinhood Chain, incluso
@@ -211,8 +244,27 @@ async function enrichMissingLogos(tokens: Token[]): Promise<void> {
       if (im) t.imageUrl = normalizeLogo(im);
     }
   }
+
+  // Tercera fuente (si hay key): GMGN OpenAPI, por dirección.
+  if (GMGN_KEY) {
+    const addrs = tokens
+      .filter((t) => !t.imageUrl && t.address)
+      .map((t) => t.address)
+      .slice(0, 12);
+    const results = await Promise.all(
+      addrs.map((a) => gmgnLogo(a).then((logo) => ({ a: a.toLowerCase(), logo })))
+    );
+    const gmap = new Map(results.filter((r) => r.logo).map((r) => [r.a, r.logo]));
+    for (const t of tokens) {
+      if (!t.imageUrl && t.address) {
+        const im = gmap.get(t.address.toLowerCase());
+        if (im) t.imageUrl = normalizeLogo(im);
+      }
+    }
+  }
+
   const stillMissing = tokens.filter((t) => !t.imageUrl).length;
-  console.log(`enrich: missing=${uniq.length} found=${map.size} stillMissing=${stillMissing}`);
+  console.log(`enrich: missing=${uniq.length} found=${map.size} gmgn=${GMGN_KEY ? "on" : "off"} stillMissing=${stillMissing}`);
 }
 
 export async function GET(req: Request) {
