@@ -457,9 +457,13 @@ function TokenMedia({
   onUse: (imageUrl: string) => void;
   big?: boolean;
 }) {
+  const [broken, setBroken] = useState(false);
+  useEffect(() => {
+    setBroken(false);
+  }, [token.imageUrl]);
   const label = (token.symbol || token.name || "?").slice(0, 3);
 
-  if (!token.imageUrl) {
+  if (!token.imageUrl || broken) {
     return (
       <div
         className={`token-avatar${big ? " big" : ""}`}
@@ -476,6 +480,7 @@ function TokenMedia({
         className={token.banner ? "tok-banner" : undefined}
         src={tokenImg(token.imageUrl)}
         alt={token.name}
+        onError={() => setBroken(true)}
       />
       {!big && (
         <button

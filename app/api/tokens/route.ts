@@ -162,6 +162,57 @@ async function fetchGecko(mode: string): Promise<Token[]> {
   return out;
 }
 
+// Rellena el icono de los tokens que NOXA no trae con logo, buscando en
+// GeckoTerminal y DexScreener por dirección.
+async function enrichMissingLogos(tokens: Token[]): Promise<void> {
+  const uniq = [
+    ...new Set(tokens.filter((t) => !t.imageUrl && t.address).map((t) => t.address.toLowerCase())),
+  ].slice(0, 30);
+  if (!uniq.length) return;
+  const map = new Map<string, string>();
+
+  await Promise.all([
+    (async () => {
+      try {
+        const r = await fetch(`${GT}/networks/${NET}/tokens/multi/${uniq.join(",")}`, {
+          headers: { Accept: "application/json" },
+          next: { revalidate: 30 },
+        });
+        if (!r.ok) return;
+        const j: any = await r.json();
+        for (const d of Array.isArray(j?.data) ? j.data : []) {
+          const addr = d?.attributes?.address?.toLowerCase();
+          const img = d?.attributes?.image_url;
+          if (addr && img && img !== "missing.png") map.set(addr, String(img));
+        }
+      } catch {}
+    })(),
+    (async () => {
+      try {
+        const r = await fetch(`https://api.dexscreener.com/tokens/v1/${NET}/${uniq.join(",")}`, {
+          headers: { Accept: "application/json" },
+          next: { revalidate: 30 },
+        });
+        if (!r.ok) return;
+        const arr: any = await r.json();
+        const pairs = Array.isArray(arr) ? arr : arr?.pairs || [];
+        for (const p of pairs) {
+          const addr = p?.baseToken?.address?.toLowerCase();
+          const img = p?.info?.imageUrl;
+          if (addr && img && !map.has(addr)) map.set(addr, String(img));
+        }
+      } catch {}
+    })(),
+  ]);
+
+  for (const t of tokens) {
+    if (!t.imageUrl && t.address) {
+      const im = map.get(t.address.toLowerCase());
+      if (im) t.imageUrl = normalizeLogo(im);
+    }
+  }
+}
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const mode = searchParams.get("mode") === "new" ? "new" : "trending";
@@ -205,5 +256,7 @@ export async function GET(req: Request) {
     tokens.sort((x, y) => Number(Boolean(y.imageUrl)) - Number(Boolean(x.imageUrl)));
   }
 
-  return NextResponse.json({ network: NET, mode, window: win, tokens: tokens.slice(0, 24) });
+  const finalTokens = tokens.slice(0, 24);
+  await enrichMissingLogos(finalTokens);
+  return NextResponse.json({ network: NET, mode, window: win, tokens: finalTokens });
 }
