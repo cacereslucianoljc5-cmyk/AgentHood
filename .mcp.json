@@ -1,0 +1,27 @@
+{
+  "mcpServers": {
+    "magicui": {
+      "command": "npx",
+      "args": ["-y", "@magicuidesign/mcp@latest"]
+    },
+    "reactbits": {
+      "command": "npx",
+      "args": ["-y", "reactbits-dev-mcp-server"]
+    },
+    "aceternity": {
+      "command": "npx",
+      "args": ["-y", "aceternityui-mcp"]
+    },
+    "ui-layouts": {
+      "command": "npx",
+      "args": ["-y", "@ui-layouts/mcp"]
+    },
+    "magic21": {
+      "command": "npx",
+      "args": ["-y", "@21st-dev/magic@latest"],
+      "env": {
+        "API_KEY": "${MAGIC_21ST_API_KEY}"
+      }
+    }
+  }
+}
