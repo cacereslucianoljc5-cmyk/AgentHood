@@ -245,6 +245,38 @@ async function enrichMissingLogos(tokens: Token[]): Promise<void> {
     }
   }
 
+  // Segunda fuente: endpoint /info por token de GeckoTerminal. Devuelve image_url
+  // aun cuando el token es demasiado nuevo para aparecer en tokens/multi.
+  const missingForInfo = tokens.filter((t) => !t.imageUrl && t.address).slice(0, 20);
+  if (missingForInfo.length) {
+    const infoResults = await Promise.all(
+      missingForInfo.map(async (t) => {
+        try {
+          const r = await fetch(`${GT}/networks/${NET}/tokens/${t.address}/info`, {
+            headers: { Accept: "application/json" },
+            next: { revalidate: 30 },
+          });
+          if (!r.ok) return { a: t.address.toLowerCase(), logo: "" };
+          const j: any = await r.json();
+          const img = j?.data?.attributes?.image_url;
+          return {
+            a: t.address.toLowerCase(),
+            logo: img && img !== "missing.png" ? String(img) : "",
+          };
+        } catch {
+          return { a: t.address.toLowerCase(), logo: "" };
+        }
+      })
+    );
+    const infoMap = new Map(infoResults.filter((r) => r.logo).map((r) => [r.a, r.logo]));
+    for (const t of tokens) {
+      if (!t.imageUrl && t.address) {
+        const im = infoMap.get(t.address.toLowerCase());
+        if (im) t.imageUrl = normalizeLogo(im);
+      }
+    }
+  }
+
   // Tercera fuente (si hay key): GMGN OpenAPI, por dirección.
   if (GMGN_KEY) {
     const addrs = tokens
