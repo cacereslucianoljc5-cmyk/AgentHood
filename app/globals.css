@@ -191,6 +191,7 @@ a {
 .brand .logo {
   width: 34px;
   height: 34px;
+  object-fit: contain;
   filter: drop-shadow(0 0 10px rgba(198, 242, 78, 0.5));
 }
 .brand .name {
@@ -243,9 +244,10 @@ a {
     transform: translateY(-10px);
   }
 }
-.hero-logo svg {
-  width: 78%;
-  height: 78%;
+.hero-logo img {
+  width: 88%;
+  height: 88%;
+  object-fit: contain;
 }
 .hero h1 {
   font-size: clamp(30px, 6.2vw, 52px);
@@ -837,8 +839,9 @@ input[type="text"]:focus {
   transition: box-shadow 0.2s ease, transform 0.2s ease;
 }
 .coin-logo {
-  width: 58%;
-  height: 58%;
+  width: 62%;
+  height: 62%;
+  object-fit: contain;
   filter: drop-shadow(0 0 8px rgba(198, 242, 78, 0.55));
 }
 .tap-info {
