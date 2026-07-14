@@ -1,8 +1,52 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
+import { decodeFunctionData } from "viem";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 30;
+
+// --- Recuperación de logo ON-CHAIN (sin NOXA) ---
+// En la Robinhood Chain, el creador de un token NOXA guarda el logo en el
+// calldata de la tx de lanzamiento (launchToken, selector 0x686399cb), campo
+// params.logo. Es permanente en la blockchain, así que se puede leer por RPC
+// aunque el backend de NOXA esté caído.
+const HOOD_RPC = process.env.HOOD_RPC_URL || "https://rpc.mainnet.chain.robinhood.com";
+const LAUNCH_ABI = [
+  {
+    type: "function",
+    name: "launchToken",
+    stateMutability: "payable",
+    inputs: [
+      {
+        name: "params",
+        type: "tuple",
+        components: [
+          { name: "name", type: "string" },
+          { name: "symbol", type: "string" },
+          { name: "logo", type: "string" },
+          { name: "description", type: "string" },
+          {
+            name: "socials",
+            type: "tuple",
+            components: [
+              { name: "telegram", type: "string" },
+              { name: "twitter", type: "string" },
+              { name: "discord", type: "string" },
+              { name: "website", type: "string" },
+              { name: "farcaster", type: "string" },
+            ],
+          },
+          { name: "devWallet", type: "address" },
+        ],
+      },
+      { name: "launchConfigId", type: "uint256" },
+      { name: "dexId", type: "uint256" },
+      { name: "salt", type: "bytes32" },
+    ],
+    outputs: [],
+  },
+] as const;
 
 // GMGN OpenAPI (openapi.gmgn.ai) — API oficial de servidor (sin el Cloudflare
 // de la web). Con GMGN_API_KEY devuelve el logo de casi cualquier token.
@@ -198,8 +242,56 @@ async function fetchGecko(mode: string): Promise<Token[]> {
   return out;
 }
 
-// Rellena el icono de los tokens que NOXA no trae con logo, buscando en
-// GeckoTerminal y DexScreener por dirección.
+// Devuelve la tx que creó el contrato del token (= la tx launchToken), vía el
+// explorer Blockscout de Robinhood Chain.
+async function creationTx(address: string): Promise<string | null> {
+  try {
+    const r = await fetch(`${BLOCKSCOUT}/api/v2/addresses/${address}`, {
+      headers: { Accept: "application/json" },
+      next: { revalidate: 3600 }, // la tx de creación no cambia
+    });
+    if (!r.ok) return null;
+    const j: any = await r.json();
+    return j?.creation_transaction_hash || j?.creation_tx_hash || null;
+  } catch {
+    return null;
+  }
+}
+
+// Lee el input de una tx por RPC y decodifica params.logo si es un launchToken.
+async function logoFromLaunchTx(txHash: string): Promise<string> {
+  try {
+    const r = await fetch(HOOD_RPC, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "eth_getTransactionByHash",
+        params: [txHash],
+      }),
+      cache: "no-store",
+    });
+    if (!r.ok) return "";
+    const j: any = await r.json();
+    const input: string | undefined = j?.result?.input;
+    if (!input || !input.toLowerCase().startsWith("0x686399cb")) return "";
+    const dec = decodeFunctionData({ abi: LAUNCH_ABI, data: input as `0x${string}` });
+    const logo = (dec.args?.[0] as any)?.logo;
+    return logo ? String(logo) : "";
+  } catch {
+    return "";
+  }
+}
+
+// Recupera el logo on-chain (Blockscout: tx de creación → RPC: input → decode).
+async function onchainLogo(address: string): Promise<string> {
+  const tx = await creationTx(address);
+  if (!tx) return "";
+  return logoFromLaunchTx(tx);
+}
+
+// Rellena el icono de los tokens sin logo desde varias fuentes públicas.
 async function enrichMissingLogos(tokens: Token[]): Promise<void> {
   const uniq = [
     ...new Set(tokens.filter((t) => !t.imageUrl && t.address).map((t) => t.address.toLowerCase())),
@@ -280,32 +372,24 @@ async function enrichMissingLogos(tokens: Token[]): Promise<void> {
     }
   }
 
-  // Tercera fuente: explorer Blockscout de Robinhood Chain (icon_url por token).
-  const missingForBs = tokens.filter((t) => !t.imageUrl && t.address).slice(0, 20);
-  if (missingForBs.length) {
-    const bsResults = await Promise.all(
-      missingForBs.map(async (t) => {
-        try {
-          const r = await fetch(`${BLOCKSCOUT}/api/v2/tokens/${t.address}`, {
-            headers: { Accept: "application/json" },
-            next: { revalidate: 30 },
-          });
-          if (!r.ok) return { a: t.address.toLowerCase(), logo: "" };
-          const j: any = await r.json();
-          const img = j?.icon_url || j?.image_url || "";
-          return { a: t.address.toLowerCase(), logo: img ? String(img) : "" };
-        } catch {
-          return { a: t.address.toLowerCase(), logo: "" };
-        }
-      })
+  // Tercera fuente: ON-CHAIN. El logo del creador vive en el calldata de la tx
+  // de lanzamiento (launchToken) de NOXA, así que se recupera por RPC aunque el
+  // backend de NOXA esté caído. Es la fuente autoritativa para tokens nuevos.
+  const missingForChain = tokens.filter((t) => !t.imageUrl && t.address).slice(0, 20);
+  if (missingForChain.length) {
+    const chainResults = await Promise.all(
+      missingForChain.map((t) =>
+        onchainLogo(t.address).then((logo) => ({ a: t.address.toLowerCase(), logo }))
+      )
     );
-    const bsMap = new Map(bsResults.filter((r) => r.logo).map((r) => [r.a, r.logo]));
+    const chainMap = new Map(chainResults.filter((r) => r.logo).map((r) => [r.a, r.logo]));
     for (const t of tokens) {
       if (!t.imageUrl && t.address) {
-        const im = bsMap.get(t.address.toLowerCase());
+        const im = chainMap.get(t.address.toLowerCase());
         if (im) t.imageUrl = normalizeLogo(im);
       }
     }
+    console.log(`enrich onchain: tried=${missingForChain.length} found=${chainMap.size}`);
   }
 
   // Cuarta fuente (si hay key): GMGN OpenAPI, por dirección. Es la que más
