@@ -286,6 +286,28 @@ async function creationTx(address: string): Promise<string | null> {
   }
 }
 
+// Algunos launchpads guardan en el calldata una URL a un JSON de metadata (tipo
+// NFT) en vez del logo directo. Descargamos el JSON y sacamos su campo image.
+async function resolveMetadataImage(url: string): Promise<string> {
+  try {
+    const u = /^ipfs:\/\//i.test(url) ? normalizeLogo(url) : url;
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), 6000);
+    const r = await fetch(u, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+      signal: c.signal,
+    }).finally(() => clearTimeout(t));
+    if (!r.ok) return "";
+    const j: any = await r.json();
+    const img =
+      j?.image || j?.image_url || j?.imageUrl || j?.logo || j?.properties?.image || "";
+    return img ? String(img) : "";
+  } catch {
+    return "";
+  }
+}
+
 // Lee el input de la tx de lanzamiento por RPC y saca el logo de su calldata.
 async function logoFromLaunchTx(txHash: string): Promise<string> {
   try {
@@ -304,7 +326,12 @@ async function logoFromLaunchTx(txHash: string): Promise<string> {
     const j: any = await r.json();
     const input: string | undefined = j?.result?.input;
     if (!input || input.length < 200) return "";
-    return pickLogoString(extractCalldataStrings(input));
+    let logo = pickLogoString(extractCalldataStrings(input));
+    // Si es un JSON de metadata, resolvemos la imagen real que contiene.
+    if (logo && /\.json(\?|$)|\/metadata\//i.test(logo)) {
+      logo = await resolveMetadataImage(logo);
+    }
+    return logo;
   } catch {
     return "";
   }
@@ -430,7 +457,10 @@ async function enrichMissingLogos(tokens: Token[]): Promise<void> {
           inp = JSON.parse(rtxt)?.result?.input || "";
         } catch {}
         const strs = extractCalldataStrings(inp);
-        const picked = pickLogoString(strs);
+        let picked = pickLogoString(strs);
+        if (picked && /\.json(\?|$)|\/metadata\//i.test(picked)) {
+          picked = (await resolveMetadataImage(picked)) || `json:${picked}`;
+        }
         console.log(
           `onchain diag rpc: status=${rr.status} sel=${inp.slice(0, 10)} len=${inp.length} strs=${strs.length} logo=${picked.slice(0, 80) || "NONE"} sample=${strs.slice(0, 6).map((x) => x.slice(0, 24)).join(" | ")}`
         );
