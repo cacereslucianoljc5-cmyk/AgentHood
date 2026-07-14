@@ -27,28 +27,32 @@ de librerías de componentes. Claude Code los carga al abrir el proyecto.
 - "Instala el componente button de shadcn" / "añade un pricing section" (shadcn)
 
 ### shadcn como puente a otros registries
-El servidor `shadcn` instala desde **cualquier registry compatible**, no solo
-shadcn/ui. Para añadir un registry externo (p. ej. **Cursify**), regístralo en
-`components.json` o instala directo por URL:
-```bash
-npx shadcn@latest add "https://cursify.vercel.app/r/<componente>.json"
-```
+El servidor `shadcn` instala desde **cualquier registry compatible** (p. ej.
+Aceternity: `npx shadcn@latest add https://ui.aceternity.com/registry/<n>.json`).
 
-## 2. Buenas, sin MCP propio
+## 2. Buenas, sin MCP propio — cubiertas por la skill `crear-paginas`
 
-- **Cursify** (animaciones de cursor React) — https://cursify.vercel.app/get-started
-  → instalable vía shadcn (ver arriba) o copiando desde los docs.
-- **Uiverse** (CSS/Tailwind puro, copy-paste) — https://uiverse.io/elements
-  → sin MCP ni CLI: se copia el HTML/CSS del elemento.
-- **Pixel Perfect** (bloques + SVG assets) — https://www.pixel-perfect.space/blocks
-  → navegar y descargar; los bloques shadcn se pueden instalar por URL si exponen
-    su registry JSON.
+La skill `.claude/skills/crear-paginas` incluye scripts probados que traen el
+código de estas fuentes por ti (vía sus repos públicos de GitHub):
 
-## 3. Solo referencia / inspiración (sin integración)
+- **Cursify** (37 efectos de cursor React) — https://cursify.vercel.app
+  → `scripts/cursify.sh list|get|docs`. OJO: **no** tiene registry shadcn
+  (verificado); la instalación es copy-paste + `npm i motion clsx tailwind-merge`.
+- **Uiverse** (~3800 elementos CSS/Tailwind, MIT) — https://uiverse.io/elements
+  → `scripts/uiverse.sh search|list|get|get-url` (espejo `uiverse-io/galaxy`).
+- **Pixel Perfect** (332 bloques + SVG assets) — https://www.pixel-perfect.space/blocks
+  → `scripts/pixelperfect.sh list|list-svg|search|get` (repo `vansh-nagar/Pixel-Perfect`).
 
-- **Mobbin** (patrones de apps iOS/Android, requiere login) — https://mobbin.com
+## 3. Inspiración (integradas en la skill vía WebSearch)
+
+La skill las usa en MODO CREAR (cuando no das una página de referencia):
+
+- **Mobbin** (patrones de apps iOS/Android) — https://mobbin.com
+  → `WebSearch site:mobbin.com <flujo o patrón>` (títulos+snippets indexados).
 - **Rebrand Gallery** (bentos) — https://www.rebrand.gallery/bentos
+  → bloqueado para fetch directo; WebSearch equivalente.
 - **Craftwork** (webs curadas) — https://craftwork.design/curated/websites
+  → receta en `references/fuentes.md` de la skill.
 
 ---
 
