@@ -308,12 +308,13 @@ async function enrichMissingLogos(tokens: Token[]): Promise<void> {
     }
   }
 
-  // Cuarta fuente (si hay key): GMGN OpenAPI, por dirección.
+  // Cuarta fuente (si hay key): GMGN OpenAPI, por dirección. Es la que más
+  // aporta en Robinhood Chain, así que cubrimos TODOS los que sigan sin logo.
   if (GMGN_KEY) {
     const addrs = tokens
       .filter((t) => !t.imageUrl && t.address)
       .map((t) => t.address)
-      .slice(0, 12);
+      .slice(0, 24);
     const results = await Promise.all(
       addrs.map((a) => gmgnLogo(a).then((logo) => ({ a: a.toLowerCase(), logo })))
     );
