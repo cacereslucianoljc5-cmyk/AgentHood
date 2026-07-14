@@ -1,52 +1,80 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { decodeFunctionData } from "viem";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 // --- Recuperación de logo ON-CHAIN (sin NOXA) ---
-// En la Robinhood Chain, el creador de un token NOXA guarda el logo en el
-// calldata de la tx de lanzamiento (launchToken, selector 0x686399cb), campo
-// params.logo. Es permanente en la blockchain, así que se puede leer por RPC
-// aunque el backend de NOXA esté caído.
+// En la Robinhood Chain, el creador de un token NOXA guarda el logo (URI de
+// IPFS) en el calldata de la tx de lanzamiento. Es permanente en la blockchain,
+// así que se lee por RPC aunque el backend de NOXA esté caído. En vez de fijar
+// un ABI exacto (el selector puede cambiar entre versiones del launchpad),
+// extraemos las cadenas ABI del calldata y elegimos la que es el logo.
 const HOOD_RPC = process.env.HOOD_RPC_URL || "https://rpc.mainnet.chain.robinhood.com";
-const LAUNCH_ABI = [
-  {
-    type: "function",
-    name: "launchToken",
-    stateMutability: "payable",
-    inputs: [
-      {
-        name: "params",
-        type: "tuple",
-        components: [
-          { name: "name", type: "string" },
-          { name: "symbol", type: "string" },
-          { name: "logo", type: "string" },
-          { name: "description", type: "string" },
-          {
-            name: "socials",
-            type: "tuple",
-            components: [
-              { name: "telegram", type: "string" },
-              { name: "twitter", type: "string" },
-              { name: "discord", type: "string" },
-              { name: "website", type: "string" },
-              { name: "farcaster", type: "string" },
-            ],
-          },
-          { name: "devWallet", type: "address" },
-        ],
-      },
-      { name: "launchConfigId", type: "uint256" },
-      { name: "dexId", type: "uint256" },
-      { name: "salt", type: "bytes32" },
-    ],
-    outputs: [],
-  },
-] as const;
+
+// Extrae todas las strings ABI-encoded del calldata (palabra de longitud de 32
+// bytes seguida de bytes ASCII imprimibles).
+function extractCalldataStrings(input: string): string[] {
+  const hex = input.startsWith("0x") ? input.slice(2) : input;
+  // Salta el selector de 4 bytes (8 hex).
+  const body = hex.slice(8);
+  let bytes: Buffer;
+  try {
+    bytes = Buffer.from(body, "hex");
+  } catch {
+    return [];
+  }
+  const out: string[] = [];
+  for (let i = 0; i + 32 <= bytes.length; i += 32) {
+    // La longitud ocupa toda la palabra de 32 bytes; los primeros 28 deben ser 0.
+    let zeros = true;
+    for (let k = i; k < i + 28; k++) {
+      if (bytes[k] !== 0) {
+        zeros = false;
+        break;
+      }
+    }
+    if (!zeros) continue;
+    const len = bytes.readUInt32BE(i + 28);
+    if (len < 3 || len > 4096) continue;
+    const start = i + 32;
+    if (start + len > bytes.length) continue;
+    const slice = bytes.subarray(start, start + len);
+    let ok = true;
+    for (const b of slice) {
+      if (b < 9 || (b > 13 && b < 32) || b > 126) {
+        ok = false;
+        break;
+      }
+    }
+    if (!ok) continue;
+    const s = slice.toString("utf8").trim();
+    if (s) out.push(s);
+  }
+  return out;
+}
+
+// De las strings del calldata, elige la que es el logo/imagen del token.
+function pickLogoString(strings: string[]): string {
+  for (const s of strings) {
+    if (s.toLowerCase().startsWith("ipfs://")) return s;
+  }
+  for (const s of strings) {
+    if (/^https?:\/\/\S+\.(png|jpe?g|gif|webp|svg|avif)(\?|$)/i.test(s)) return s;
+    if (/^https?:\/\/\S*(ipfs|\/image|logo|cloudinary|imagedelivery|arweave)/i.test(s)) return s;
+  }
+  for (const s of strings) {
+    if (/^(baf[a-z0-9]{20,}|Qm[1-9A-HJ-NP-Za-km-z]{44})$/.test(s)) return s;
+  }
+  // http genérico que no sea una red social conocida.
+  for (const s of strings) {
+    if (/^https?:\/\//i.test(s) && !/(twitter|x\.com|t\.me|telegram|discord|farcaster|warpcast|youtube|tiktok|instagram)/i.test(s)) {
+      return s;
+    }
+  }
+  return "";
+}
 
 // GMGN OpenAPI (openapi.gmgn.ai) — API oficial de servidor (sin el Cloudflare
 // de la web). Con GMGN_API_KEY devuelve el logo de casi cualquier token.
@@ -258,7 +286,7 @@ async function creationTx(address: string): Promise<string | null> {
   }
 }
 
-// Lee el input de una tx por RPC y decodifica params.logo si es un launchToken.
+// Lee el input de la tx de lanzamiento por RPC y saca el logo de su calldata.
 async function logoFromLaunchTx(txHash: string): Promise<string> {
   try {
     const r = await fetch(HOOD_RPC, {
@@ -275,10 +303,8 @@ async function logoFromLaunchTx(txHash: string): Promise<string> {
     if (!r.ok) return "";
     const j: any = await r.json();
     const input: string | undefined = j?.result?.input;
-    if (!input || !input.toLowerCase().startsWith("0x686399cb")) return "";
-    const dec = decodeFunctionData({ abi: LAUNCH_ABI, data: input as `0x${string}` });
-    const logo = (dec.args?.[0] as any)?.logo;
-    return logo ? String(logo) : "";
+    if (!input || input.length < 200) return "";
+    return pickLogoString(extractCalldataStrings(input));
   } catch {
     return "";
   }
@@ -403,7 +429,11 @@ async function enrichMissingLogos(tokens: Token[]): Promise<void> {
         try {
           inp = JSON.parse(rtxt)?.result?.input || "";
         } catch {}
-        console.log(`onchain diag rpc: status=${rr.status} sel=${inp.slice(0, 10)} len=${inp.length} body=${rtxt.slice(0, 100)}`);
+        const strs = extractCalldataStrings(inp);
+        const picked = pickLogoString(strs);
+        console.log(
+          `onchain diag rpc: status=${rr.status} sel=${inp.slice(0, 10)} len=${inp.length} strs=${strs.length} logo=${picked.slice(0, 80) || "NONE"} sample=${strs.slice(0, 6).map((x) => x.slice(0, 24)).join(" | ")}`
+        );
       }
     } catch (e) {
       console.log("onchain diag err", String(e).slice(0, 160));
