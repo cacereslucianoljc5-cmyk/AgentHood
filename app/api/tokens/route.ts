@@ -130,6 +130,22 @@ type Token = {
   url: string;
 };
 
+// Quita duplicados por dirección y el token de gas envuelto (WETH, 0x000…000),
+// que no es una memecoin lanzada sino el par de liquidez.
+function cleanPool(list: Token[]): Token[] {
+  const seen = new Set<string>();
+  const out: Token[] = [];
+  for (const t of list) {
+    const a = (t.address || "").toLowerCase();
+    if (!a || a === "0x0000000000000000000000000000000000000000") continue;
+    if (/^weth$/i.test(t.symbol)) continue;
+    if (seen.has(a)) continue;
+    seen.add(a);
+    out.push(t);
+  }
+  return out;
+}
+
 function windowMs(w: string): number {
   if (w === "1h") return 3_600_000;
   if (w === "6h") return 6 * 3_600_000;
@@ -351,7 +367,7 @@ async function onchainLogo(address: string): Promise<string> {
 async function enrichMissingLogos(tokens: Token[]): Promise<void> {
   const uniq = [
     ...new Set(tokens.filter((t) => !t.imageUrl && t.address).map((t) => t.address.toLowerCase())),
-  ].slice(0, 30);
+  ].slice(0, 40);
   if (!uniq.length) return;
   const map = new Map<string, string>();
 
@@ -398,7 +414,7 @@ async function enrichMissingLogos(tokens: Token[]): Promise<void> {
 
   // Segunda fuente: endpoint /info por token de GeckoTerminal. Devuelve image_url
   // aun cuando el token es demasiado nuevo para aparecer en tokens/multi.
-  const missingForInfo = tokens.filter((t) => !t.imageUrl && t.address).slice(0, 20);
+  const missingForInfo = tokens.filter((t) => !t.imageUrl && t.address).slice(0, 30);
   if (missingForInfo.length) {
     const infoResults = await Promise.all(
       missingForInfo.map(async (t) => {
@@ -431,7 +447,7 @@ async function enrichMissingLogos(tokens: Token[]): Promise<void> {
   // Tercera fuente: ON-CHAIN. El logo del creador vive en el calldata de la tx
   // de lanzamiento (launchToken) de NOXA, así que se recupera por RPC aunque el
   // backend de NOXA esté caído. Es la fuente autoritativa para tokens nuevos.
-  const missingForChain = tokens.filter((t) => !t.imageUrl && t.address).slice(0, 20);
+  const missingForChain = tokens.filter((t) => !t.imageUrl && t.address).slice(0, 32);
   if (missingForChain.length) {
     const chainResults = await Promise.all(
       missingForChain.map((t) =>
@@ -454,7 +470,7 @@ async function enrichMissingLogos(tokens: Token[]): Promise<void> {
     const addrs = tokens
       .filter((t) => !t.imageUrl && t.address)
       .map((t) => t.address)
-      .slice(0, 10);
+      .slice(0, 14);
     const gmap = new Map<string, string>();
     for (const a of addrs) {
       const logo = await gmgnLogo(a);
@@ -478,7 +494,8 @@ export async function GET(req: Request) {
   const mode = searchParams.get("mode") === "new" ? "new" : "trending";
   const win = searchParams.get("window") || "24h";
 
-  let tokens: Token[] = [];
+  // Tamaño de cada pestaña (creciente: 24h muestra más que 6h que 1h).
+  const cap = mode === "new" ? (win === "1h" ? 8 : win === "6h" ? 16 : 24) : 24;
 
   // 1) NOXA si hay túnel configurado (logo real del creador); si no, [] y pasa
   //    directo a GeckoTerminal (fuente primaria estable).
@@ -486,54 +503,26 @@ export async function GET(req: Request) {
     fetchNoxa(mode === "new" ? "newest" : "volume", mode === "new" ? 100 : 40, mode !== "new"),
     getEthUsd(),
   ]);
-  if (rows.length) {
-    const all = mapNoxa(rows, ethUsd);
-    if (mode === "new") {
-      const cutoff = Date.now() - windowMs(win);
-      const cap = win === "1h" ? 8 : win === "6h" ? 16 : 24;
-      const byNewest = (a: Token, b: Token) => (b.createdAtMs || 0) - (a.createdAtMs || 0);
-      const within = all
-        .filter((t) => t.createdAtMs != null && t.createdAtMs >= cutoff)
-        .sort(byNewest);
-      if (within.length >= cap) {
-        tokens = within.slice(0, cap);
-      } else {
-        // Completa con los más nuevos disponibles para no dejar la ventana vacía.
-        const seen = new Set(within.map((t) => t.address));
-        const extra = all.filter((t) => !seen.has(t.address)).sort(byNewest);
-        tokens = within.concat(extra).slice(0, cap);
-      }
-    } else {
-      tokens = all;
-    }
-    console.log(`tokens noxa: mode=${mode} win=${win} rows=${rows.length} sent=${tokens.length}`);
-  } else {
-    // 2) GeckoTerminal: fuente primaria estable (o respaldo si NOXA no respondió).
-    const all = await fetchGecko(mode);
-    if (mode === "new") {
-      // Tope creciente por ventana para que 6h muestre más que 1h y 24h más que
-      // 6h (la cadena es tan rápida que casi todo cae dentro de 1h, así que el
-      // tamaño de cada pestaña es lo que las diferencia).
-      const cap = win === "1h" ? 8 : win === "6h" ? 16 : 28;
-      const cutoff = Date.now() - windowMs(win);
-      const byNewest = (a: Token, b: Token) => (b.createdAtMs || 0) - (a.createdAtMs || 0);
-      const within = all
-        .filter((t) => t.createdAtMs != null && t.createdAtMs >= cutoff)
-        .sort(byNewest);
-      if (within.length >= cap) {
-        tokens = within.slice(0, cap);
-      } else {
-        const seen = new Set(within.map((t) => t.address));
-        const extra = all.filter((t) => !seen.has(t.address)).sort(byNewest);
-        tokens = within.concat(extra).slice(0, cap);
-      }
-    } else {
-      tokens = all;
-      tokens.sort((x, y) => Number(Boolean(y.imageUrl)) - Number(Boolean(x.imageUrl)));
-    }
+
+  // Construye un POOL amplio de candidatos (más de los que se muestran) para,
+  // tras enriquecer, quedarnos solo con los que tienen logo y aun así llenar.
+  const byNewest = (a: Token, b: Token) => (b.createdAtMs || 0) - (a.createdAtMs || 0);
+  let pool: Token[] = rows.length ? cleanPool(mapNoxa(rows, ethUsd)) : cleanPool(await fetchGecko(mode));
+  if (mode === "new") {
+    const cutoff = Date.now() - windowMs(win);
+    const within = pool.filter((t) => t.createdAtMs != null && t.createdAtMs >= cutoff).sort(byNewest);
+    const seen = new Set(within.map((t) => t.address.toLowerCase()));
+    const extra = pool.filter((t) => !seen.has(t.address.toLowerCase())).sort(byNewest);
+    pool = within.concat(extra); // dentro de la ventana primero, luego los más nuevos
   }
 
-  const finalTokens = tokens.slice(0, 28);
-  await enrichMissingLogos(finalTokens);
+  // Enriquece un prefijo amplio del pool y descarta los que sigan sin logo.
+  const enrichPool = pool.slice(0, 40);
+  await enrichMissingLogos(enrichPool);
+  const logoed = enrichPool.filter((t) => t.imageUrl);
+  const finalTokens = logoed.slice(0, cap);
+  console.log(
+    `tokens: mode=${mode} win=${win} pool=${pool.length} enriched=${enrichPool.length} logoed=${logoed.length} sent=${finalTokens.length}`
+  );
   return NextResponse.json({ network: NET, mode, window: win, tokens: finalTokens });
 }
