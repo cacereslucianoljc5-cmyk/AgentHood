@@ -13,9 +13,11 @@ description: >
 
 # Skill: crear-paginas
 
-Construye la página que pide el usuario seleccionando **solo** las herramientas
-que el proyecto necesita. Nunca uses todas; nunca le pidas al usuario una
-página de referencia si no la dio.
+Construye la página que pide el usuario usando **todas las herramientas que
+hagan falta** para lograr el mejor resultado — sin tope de cantidad. La única
+regla es que cada herramienta que uses aporte algo real a alguna sección; no
+metas una solo por meterla. Si el proyecto se beneficia de las 9 fuentes,
+úsalas las 9. Nunca le pidas al usuario una página de referencia si no la dio.
 
 ## Paso 0 — Detectar el contexto (SIEMPRE primero)
 
@@ -31,23 +33,26 @@ página de referencia si no la dio.
      En este modo está PROHIBIDO pedirle una referencia: la inspiración la
      buscas tú con las galerías (paso 2A).
 
-## Paso 1 — Elegir herramientas (matriz de selección)
+## Paso 1 — Elegir herramientas (matriz orientativa, SIN tope)
 
-Regla dura: **máximo 3 herramientas de componentes por proyecto** (sin contar
-galerías de inspiración), y cada una debe justificarse por una sección
-concreta de la página. Verifica que el servidor esté conectado antes de
-planificar con él (si un MCP no responde, usa su alternativa).
+Usa tantas herramientas como el proyecto necesite — no hay límite de cantidad.
+Esta tabla es una guía de *qué encaja mejor* con cada tipo de página, no un
+máximo: si una landing luce mejor combinando shadcn + magicui + aceternity +
+reactbits + Cursify, úsalas todas. Única condición: cada herramienta debe
+resolver una sección o necesidad concreta. Verifica que el servidor esté
+conectado antes de planificar con él (si un MCP no responde, usa su fallback
+de `references/fuentes.md`).
 
-| Tipo de página | Herramientas (en orden de preferencia) | Inspiración |
+| Tipo de página | Herramientas que suelen encajar (puedes sumar más) | Inspiración |
 |---|---|---|
-| Landing SaaS / producto / startup | `shadcn` (estructura) + `magicui` (bento, marquee, number-ticker) ± `aceternity` (hero con efecto) | Craftwork, Rebrand (bentos) |
-| Portfolio / web creativa | `reactbits` (texto animado, fondos) + Cursify (efectos de cursor, `scripts/cursify.sh`) ± `aceternity` | Craftwork |
-| Dashboard / app con UI densa | `shadcn` (forms, tablas, cards) + `ui-layouts` (layouts especiales) | Mobbin (patrones de apps reales) |
+| Landing SaaS / producto / startup | `shadcn` (estructura) + `magicui` (bento, marquee, number-ticker) + `aceternity` (hero con efecto) + `reactbits` (texto animado) | Craftwork, Rebrand (bentos) |
+| Portfolio / web creativa | `reactbits` (texto animado, fondos) + Cursify (`scripts/cursify.sh`) + `aceternity` | Craftwork |
+| Dashboard / app con UI densa | `shadcn` (forms, tablas, cards) + `ui-layouts` (layouts especiales) + `magicui` (KPIs animados) | Mobbin (patrones de apps reales) |
 | Juego / experiencia inmersiva | `reactbits` + `aceternity` + Cursify (`scripts/cursify.sh`) | — |
 | Página HTML plana (sin React) | Uiverse (elementos CSS puros) + Pixel-Perfect (SVG/assets) | cualquiera |
 | Elemento suelto (botón, card, loader, input) | Uiverse (fetch de HTML/CSS) | — |
 | Íconos, ilustraciones, assets SVG | Pixel-Perfect | — |
-| Componente muy específico que ninguna librería tiene | `magic21` — **ÚLTIMO recurso** (créditos limitados) | — |
+| Componente a medida que ninguna librería cubre | `magic21` (genera desde cero; consume créditos, úsalo cuando aporte) | — |
 
 ### Herramientas MCP disponibles (nombres exactos)
 
@@ -131,9 +136,10 @@ planificar con él (si un MCP no responde, usa su alternativa).
 
 ## Anti-patrones (no hacer)
 
-- Usar las 9 fuentes "por si acaso" — elige por la matriz y justifica.
+- Meter una herramienta que no resuelve ninguna sección (usar muchas está
+  bien; usar una que no aporta, no).
 - Pedirle al usuario una página de referencia cuando no dio una.
 - Gastar créditos de `magic21` en algo que magicui/reactbits/aceternity ya
-  tienen.
+  tienen resuelto igual de bien.
 - Meter librerías React (framer-motion, etc.) en un proyecto HTML plano.
 - Reescribir los textos que el usuario dio.

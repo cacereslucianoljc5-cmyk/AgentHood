@@ -1,14 +1,20 @@
 #!/bin/bash
 # Setup script para Claude Code on the web.
-# En cada sesion (cualquier repo, presente o futuro) escribe:
-#   1) .mcp.json -> 6 servidores MCP de UI (API key de 21st.dev incluida)
-#   2) .claude/skills/crear-paginas -> skill que crea paginas eligiendo
-#      herramientas de forma inteligente y trae HTML/CSS de Uiverse,
-#      Pixel-Perfect y Cursify con scripts probados.
+# En cada sesion (cualquier repo, presente o futuro) instala:
+#   1) .mcp.json en el repo -> 6 servidores MCP de UI (API key de 21st.dev incluida)
+#   2) la skill crear-paginas en DOS sitios:
+#        - ~/.claude/skills/crear-paginas   (nivel usuario: visible en CUALQUIER repo)
+#        - <repo>/.claude/skills/crear-paginas (nivel proyecto: por si se commitea)
+#   3) una nota en ~/.claude/CLAUDE.md para que baste una frase ("creame una
+#      landing de X") para que Claude use la skill sin que se lo pidas dos veces.
 set -e
 
 TARGET_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"
+HOME_DIR="${HOME:-/root}"
+USER_SKILL="${HOME_DIR}/.claude/skills/crear-paginas"
+PROJ_SKILL="${TARGET_DIR}/.claude/skills/crear-paginas"
 
+# ---- 1) .mcp.json (scope de proyecto: es el unico que Claude Code web carga) ----
 cat > "${TARGET_DIR}/.mcp.json" <<'EOF_MCP'
 {
   "mcpServers": {
@@ -23,10 +29,10 @@ cat > "${TARGET_DIR}/.mcp.json" <<'EOF_MCP'
 }
 EOF_MCP
 
-SKILL_DIR="${TARGET_DIR}/.claude/skills/crear-paginas"
-mkdir -p "${SKILL_DIR}/references" "${SKILL_DIR}/scripts"
+# ---- 2) skill crear-paginas -> se escribe en ~/.claude y se copia al proyecto ----
+mkdir -p "${USER_SKILL}/references" "${USER_SKILL}/scripts"
 
-cat > "${SKILL_DIR}/SKILL.md" <<'EOF_SKILLMD'
+cat > "${USER_SKILL}/SKILL.md" <<'EOF_SKILLMD'
 ---
 name: crear-paginas
 description: >
@@ -42,9 +48,11 @@ description: >
 
 # Skill: crear-paginas
 
-Construye la página que pide el usuario seleccionando **solo** las herramientas
-que el proyecto necesita. Nunca uses todas; nunca le pidas al usuario una
-página de referencia si no la dio.
+Construye la página que pide el usuario usando **todas las herramientas que
+hagan falta** para lograr el mejor resultado — sin tope de cantidad. La única
+regla es que cada herramienta que uses aporte algo real a alguna sección; no
+metas una solo por meterla. Si el proyecto se beneficia de las 9 fuentes,
+úsalas las 9. Nunca le pidas al usuario una página de referencia si no la dio.
 
 ## Paso 0 — Detectar el contexto (SIEMPRE primero)
 
@@ -60,23 +68,26 @@ página de referencia si no la dio.
      En este modo está PROHIBIDO pedirle una referencia: la inspiración la
      buscas tú con las galerías (paso 2A).
 
-## Paso 1 — Elegir herramientas (matriz de selección)
+## Paso 1 — Elegir herramientas (matriz orientativa, SIN tope)
 
-Regla dura: **máximo 3 herramientas de componentes por proyecto** (sin contar
-galerías de inspiración), y cada una debe justificarse por una sección
-concreta de la página. Verifica que el servidor esté conectado antes de
-planificar con él (si un MCP no responde, usa su alternativa).
+Usa tantas herramientas como el proyecto necesite — no hay límite de cantidad.
+Esta tabla es una guía de *qué encaja mejor* con cada tipo de página, no un
+máximo: si una landing luce mejor combinando shadcn + magicui + aceternity +
+reactbits + Cursify, úsalas todas. Única condición: cada herramienta debe
+resolver una sección o necesidad concreta. Verifica que el servidor esté
+conectado antes de planificar con él (si un MCP no responde, usa su fallback
+de `references/fuentes.md`).
 
-| Tipo de página | Herramientas (en orden de preferencia) | Inspiración |
+| Tipo de página | Herramientas que suelen encajar (puedes sumar más) | Inspiración |
 |---|---|---|
-| Landing SaaS / producto / startup | `shadcn` (estructura) + `magicui` (bento, marquee, number-ticker) ± `aceternity` (hero con efecto) | Craftwork, Rebrand (bentos) |
-| Portfolio / web creativa | `reactbits` (texto animado, fondos) + Cursify (efectos de cursor, `scripts/cursify.sh`) ± `aceternity` | Craftwork |
-| Dashboard / app con UI densa | `shadcn` (forms, tablas, cards) + `ui-layouts` (layouts especiales) | Mobbin (patrones de apps reales) |
+| Landing SaaS / producto / startup | `shadcn` (estructura) + `magicui` (bento, marquee, number-ticker) + `aceternity` (hero con efecto) + `reactbits` (texto animado) | Craftwork, Rebrand (bentos) |
+| Portfolio / web creativa | `reactbits` (texto animado, fondos) + Cursify (`scripts/cursify.sh`) + `aceternity` | Craftwork |
+| Dashboard / app con UI densa | `shadcn` (forms, tablas, cards) + `ui-layouts` (layouts especiales) + `magicui` (KPIs animados) | Mobbin (patrones de apps reales) |
 | Juego / experiencia inmersiva | `reactbits` + `aceternity` + Cursify (`scripts/cursify.sh`) | — |
 | Página HTML plana (sin React) | Uiverse (elementos CSS puros) + Pixel-Perfect (SVG/assets) | cualquiera |
 | Elemento suelto (botón, card, loader, input) | Uiverse (fetch de HTML/CSS) | — |
 | Íconos, ilustraciones, assets SVG | Pixel-Perfect | — |
-| Componente muy específico que ninguna librería tiene | `magic21` — **ÚLTIMO recurso** (créditos limitados) | — |
+| Componente a medida que ninguna librería cubre | `magic21` (genera desde cero; consume créditos, úsalo cuando aporte) | — |
 
 ### Herramientas MCP disponibles (nombres exactos)
 
@@ -160,15 +171,16 @@ planificar con él (si un MCP no responde, usa su alternativa).
 
 ## Anti-patrones (no hacer)
 
-- Usar las 9 fuentes "por si acaso" — elige por la matriz y justifica.
+- Meter una herramienta que no resuelve ninguna sección (usar muchas está
+  bien; usar una que no aporta, no).
 - Pedirle al usuario una página de referencia cuando no dio una.
 - Gastar créditos de `magic21` en algo que magicui/reactbits/aceternity ya
-  tienen.
+  tienen resuelto igual de bien.
 - Meter librerías React (framer-motion, etc.) en un proyecto HTML plano.
 - Reescribir los textos que el usuario dio.
 EOF_SKILLMD
 
-cat > "${SKILL_DIR}/references/fuentes.md" <<'EOF_FUENTES'
+cat > "${USER_SKILL}/references/fuentes.md" <<'EOF_FUENTES'
 # Fuentes verificadas — recetas de acceso y extracción
 
 Todas las recetas de este archivo fueron **probadas de verdad** (2026-07).
@@ -308,7 +320,7 @@ Alternativa equivalente: `best <tipo> website design 2026 inspiration`.
 3. Si no hay fallback, dile al usuario qué dominio añadir al allowlist.
 EOF_FUENTES
 
-cat > "${SKILL_DIR}/scripts/uiverse.sh" <<'EOF_UIVERSE'
+cat > "${USER_SKILL}/scripts/uiverse.sh" <<'EOF_UIVERSE'
 #!/bin/bash
 # uiverse.sh — busca y trae el HTML/CSS de elementos de uiverse.io
 # Fuente: espejo oficial en GitHub (uiverse-io/galaxy, MIT, ~3800 elementos),
@@ -385,7 +397,7 @@ case "$cmd" in
 esac
 EOF_UIVERSE
 
-cat > "${SKILL_DIR}/scripts/pixelperfect.sh" <<'EOF_PIXEL'
+cat > "${USER_SKILL}/scripts/pixelperfect.sh" <<'EOF_PIXEL'
 #!/bin/bash
 # pixelperfect.sh — lista y trae el código (TSX/SVG) de los bloques de
 # www.pixel-perfect.space. Fuente: repo público del sitio
@@ -446,7 +458,7 @@ case "$cmd" in
 esac
 EOF_PIXEL
 
-cat > "${SKILL_DIR}/scripts/cursify.sh" <<'EOF_CURSIFY'
+cat > "${USER_SKILL}/scripts/cursify.sh" <<'EOF_CURSIFY'
 #!/bin/bash
 # cursify.sh — lista y trae el código de los efectos de cursor de
 # cursify.vercel.app (React/Next). Fuente: repo público ui-layouts/cursify.
@@ -498,16 +510,32 @@ case "$cmd" in
 esac
 EOF_CURSIFY
 
-chmod +x "${SKILL_DIR}/scripts/"*.sh
+chmod +x "${USER_SKILL}/scripts/"*.sh
 
-# Blindaje: evita que la API key y los archivos generados se filtren a git.
+# copia al proyecto (para que viaje con el repo si se commitea)
+mkdir -p "$(dirname "${PROJ_SKILL}")"
+cp -r "${USER_SKILL}" "${PROJ_SKILL}"
+
+# ---- 3) nota global para disparo con una sola frase ----
+mkdir -p "${HOME_DIR}/.claude"
+CLAUDE_MD="${HOME_DIR}/.claude/CLAUDE.md"
+MARK="<!-- crear-paginas-skill -->"
+if ! grep -qF "$MARK" "$CLAUDE_MD" 2>/dev/null; then
+  {
+    echo ""
+    echo "$MARK"
+    echo "Cuando el usuario pida crear, hacer, armar o replicar una pagina, web,"
+    echo "landing, portfolio, dashboard, o traer el HTML/CSS de un componente,"
+    echo "USA la skill 'crear-paginas' (Skill tool) sin preguntar de nuevo."
+  } >> "$CLAUDE_MD"
+fi
+
+# ---- blindaje git: la API key no debe filtrarse ----
 if [ -d "${TARGET_DIR}/.git" ]; then
-  for entry in '.mcp.json'; do
-    grep -qxF "$entry" "${TARGET_DIR}/.git/info/exclude" 2>/dev/null \
-      || echo "$entry" >> "${TARGET_DIR}/.git/info/exclude"
-  done
+  grep -qxF '.mcp.json' "${TARGET_DIR}/.git/info/exclude" 2>/dev/null \
+    || echo '.mcp.json' >> "${TARGET_DIR}/.git/info/exclude"
   git -C "${TARGET_DIR}" ls-files --error-unmatch .mcp.json >/dev/null 2>&1 \
     && git -C "${TARGET_DIR}" update-index --skip-worktree .mcp.json 2>/dev/null || true
 fi
 
-echo "[setup] .mcp.json (6 servidores) + skill crear-paginas listos en ${TARGET_DIR}"
+echo "[setup] .mcp.json (6 servidores) + skill crear-paginas en ~/.claude y en ${TARGET_DIR}"
