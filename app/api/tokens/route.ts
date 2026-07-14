@@ -243,7 +243,10 @@ async function fetchGecko(mode: string): Promise<Token[]> {
     mode === "new"
       ? `${GT}/networks/${NET}/new_pools?include=base_token`
       : `${GT}/networks/${NET}/trending_pools?include=base_token&duration=24h`;
-  const pages = await Promise.all([fetchGtPage(`${base}&page=1`), fetchGtPage(`${base}&page=2`)]);
+  // En "new" pedimos más páginas: la cadena lanza tokens muy rápido, así que
+  // hacen falta varias páginas para cubrir de verdad 6h/24h y no repetir 1h.
+  const pageNums = mode === "new" ? [1, 2, 3, 4, 5] : [1, 2];
+  const pages = await Promise.all(pageNums.map((n) => fetchGtPage(`${base}&page=${n}`)));
   const tokenById = new Map<string, any>();
   for (const p of pages) for (const [k, v] of p.tokens) tokenById.set(k, v);
   const pools = pages.flatMap((p) => p.pools);
@@ -506,15 +509,31 @@ export async function GET(req: Request) {
     console.log(`tokens noxa: mode=${mode} win=${win} rows=${rows.length} sent=${tokens.length}`);
   } else {
     // 2) GeckoTerminal: fuente primaria estable (o respaldo si NOXA no respondió).
-    tokens = await fetchGecko(mode);
+    const all = await fetchGecko(mode);
     if (mode === "new") {
+      // Tope creciente por ventana para que 6h muestre más que 1h y 24h más que
+      // 6h (la cadena es tan rápida que casi todo cae dentro de 1h, así que el
+      // tamaño de cada pestaña es lo que las diferencia).
+      const cap = win === "1h" ? 8 : win === "6h" ? 16 : 28;
       const cutoff = Date.now() - windowMs(win);
-      tokens = tokens.filter((t) => t.createdAtMs == null || t.createdAtMs >= cutoff);
+      const byNewest = (a: Token, b: Token) => (b.createdAtMs || 0) - (a.createdAtMs || 0);
+      const within = all
+        .filter((t) => t.createdAtMs != null && t.createdAtMs >= cutoff)
+        .sort(byNewest);
+      if (within.length >= cap) {
+        tokens = within.slice(0, cap);
+      } else {
+        const seen = new Set(within.map((t) => t.address));
+        const extra = all.filter((t) => !seen.has(t.address)).sort(byNewest);
+        tokens = within.concat(extra).slice(0, cap);
+      }
+    } else {
+      tokens = all;
+      tokens.sort((x, y) => Number(Boolean(y.imageUrl)) - Number(Boolean(x.imageUrl)));
     }
-    tokens.sort((x, y) => Number(Boolean(y.imageUrl)) - Number(Boolean(x.imageUrl)));
   }
 
-  const finalTokens = tokens.slice(0, 24);
+  const finalTokens = tokens.slice(0, 28);
   await enrichMissingLogos(finalTokens);
   return NextResponse.json({ network: NET, mode, window: win, tokens: finalTokens });
 }
