@@ -746,6 +746,171 @@ input[type="text"]:focus {
   white-space: nowrap;
 }
 
+/* Earned-credits pill inside the limit row */
+.bonus-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 8px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: #05130a;
+  background: var(--grad);
+}
+.bonus-pill svg {
+  color: #05130a;
+}
+
+/* ---------- Tap to Earn ---------- */
+.tap-section {
+  margin-top: 34px;
+}
+.tap-card {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.coin {
+  position: relative;
+  width: 128px;
+  height: 128px;
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.12s ease;
+}
+.coin:active {
+  transform: scale(0.94);
+}
+.coin.pop {
+  transform: scale(0.9);
+}
+.coin.flash .coin-face {
+  animation: coinFlash 0.6s ease;
+}
+@keyframes coinFlash {
+  50% {
+    box-shadow: 0 0 0 6px rgba(198, 242, 78, 0.5), var(--glow);
+    transform: scale(1.06);
+  }
+}
+.coin-ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.coin-ring .track {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 6;
+}
+.coin-ring .prog {
+  fill: none;
+  stroke: var(--brand);
+  stroke-width: 6;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.25s ease;
+  filter: drop-shadow(0 0 6px rgba(198, 242, 78, 0.6));
+}
+.coin-face {
+  position: absolute;
+  inset: 14px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 40% 35%, #0f1712, #070b09);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--glow);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.coin-logo {
+  width: 58%;
+  height: 58%;
+  filter: drop-shadow(0 0 8px rgba(198, 242, 78, 0.55));
+}
+.tap-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.tap-count {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -1px;
+  line-height: 1;
+}
+.tap-count span {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-mute);
+  letter-spacing: 0;
+}
+.tap-earned {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 14px;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+.tap-earned svg {
+  color: var(--brand);
+}
+.tap-earned b {
+  color: var(--brand);
+}
+.tap-hint {
+  font-size: 13px;
+  color: var(--text-mute);
+  margin-top: 2px;
+}
+.tap-hint b {
+  color: var(--text-dim);
+}
+.tap-flash {
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--brand);
+  animation: floatUp 0.9s ease forwards;
+}
+@keyframes floatUp {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+@media (max-width: 720px) {
+  .tap-card {
+    flex-direction: column;
+    text-align: center;
+  }
+  .tap-earned {
+    justify-content: center;
+  }
+}
+
 .footer {
   text-align: center;
   color: var(--text-mute);

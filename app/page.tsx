@@ -7,6 +7,69 @@ type Ratio = "square" | "landscape" | "portrait";
 // Client-side daily counter (UX display). Server enforces the real limit.
 const IMAGE_LIMIT = 20;
 
+// Tap-to-earn: every TAPS_PER_POINT taps grants 1 bonus image credit.
+const TAPS_PER_POINT = 50;
+
+// ---------- Shared bonus-credits store (localStorage + live events) ----------
+// Credits earned by tapping are persistent and shared across components: the
+// image counter reads them and the tap game writes them, kept in sync via a
+// window event so both re-render together.
+const CREDITS_EVENT = "hood-credits";
+
+function readCredits(): { taps: number; credits: number } {
+  try {
+    const taps = Number(localStorage.getItem("hood_taps") || 0);
+    const credits = Number(localStorage.getItem("hood_credits") || 0);
+    return { taps: taps || 0, credits: credits || 0 };
+  } catch {
+    return { taps: 0, credits: 0 };
+  }
+}
+
+function writeCredits(taps: number, credits: number) {
+  try {
+    localStorage.setItem("hood_taps", String(taps));
+    localStorage.setItem("hood_credits", String(credits));
+  } catch {}
+  window.dispatchEvent(new CustomEvent(CREDITS_EVENT, { detail: { taps, credits } }));
+}
+
+function useCredits() {
+  const [state, setState] = useState({ taps: 0, credits: 0 });
+  useEffect(() => {
+    setState(readCredits());
+    const onChange = (e: Event) => {
+      const d = (e as CustomEvent).detail as { taps: number; credits: number };
+      setState(d ?? readCredits());
+    };
+    window.addEventListener(CREDITS_EVENT, onChange);
+    return () => window.removeEventListener(CREDITS_EVENT, onChange);
+  }, []);
+
+  const addTap = () => {
+    const cur = readCredits();
+    let taps = cur.taps + 1;
+    let credits = cur.credits;
+    let earned = false;
+    if (taps >= TAPS_PER_POINT) {
+      taps -= TAPS_PER_POINT;
+      credits += 1;
+      earned = true;
+    }
+    writeCredits(taps, credits);
+    return earned;
+  };
+
+  const spendCredit = () => {
+    const cur = readCredits();
+    if (cur.credits <= 0) return false;
+    writeCredits(cur.taps, cur.credits - 1);
+    return true;
+  };
+
+  return { ...state, addTap, spendCredit };
+}
+
 // ---------- Inline SVG icons (inherit color via currentColor) ----------
 function IconImage({ size = 18 }: { size?: number }) {
   return (
@@ -174,16 +237,32 @@ function Logo({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 64 64" fill="none" aria-hidden>
       <defs>
-        <linearGradient id="lg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#d7ff5e" />
-          <stop offset="0.55" stopColor="#c6f24e" />
-          <stop offset="1" stopColor="#86e05a" />
+        <linearGradient id="lg" x1="12" y1="52" x2="52" y2="12" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#6fd24e" />
+          <stop offset="0.5" stopColor="#c6f24e" />
+          <stop offset="1" stopColor="#e2ff6c" />
         </linearGradient>
       </defs>
-      {/* leaf body */}
+      {/* feather / leaf body */}
       <path
-        d="M50 8C28 8 12 22 12 42c0 5 1.4 9.6 3.8 13.4C20 40 31 30 48 26c-13 6-21 16-24 30 3 1.6 6.6 2.5 10.5 2.5C50 58.5 56 44 56 26c0-7-2-13-6-18z"
+        d="M54.6 8.4C29.2 11.7 12.4 29 10 53.6c-.2 1.8 2 2.8 3.3 1.5C33 36 45.6 24 56.4 12.1c1.6-1.7-.4-4-1.8-3.7z"
         fill="url(#lg)"
+      />
+      {/* central spine */}
+      <path
+        d="M49 14.5C34 27 20.5 40.5 12.6 54"
+        stroke="#0c2411"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        opacity="0.4"
+      />
+      {/* barbs */}
+      <path
+        d="M41 22l-8 3M35 30l-9 3.4M28.5 38l-8.4 3.6"
+        stroke="#0c2411"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        opacity="0.28"
       />
     </svg>
   );
@@ -300,6 +379,14 @@ function ImageTab() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   const counter = useDailyCounter("image", IMAGE_LIMIT);
+  const credits = useCredits();
+  const effectiveRemaining = counter.remaining + credits.credits;
+
+  // Consume one generation: use a daily slot first, then a tapped bonus credit.
+  function consumeOne() {
+    if (counter.remaining > 0) counter.bump();
+    else credits.spendCredit();
+  }
 
   // Shrink the image in the browser before uploading: keeps the payload small
   // and the vision analysis fast.
@@ -380,8 +467,8 @@ function ImageTab() {
   async function generate() {
     const text = prompt.trim();
     if (!text || loading) return;
-    if (counter.remaining <= 0) {
-      setError("You've reached your daily image limit. Come back tomorrow.");
+    if (effectiveRemaining <= 0) {
+      setError("You've reached your daily limit. Tap the coin below to earn more.");
       return;
     }
     setError("");
@@ -419,7 +506,7 @@ function ImageTab() {
           if (prev.startsWith("blob:")) URL.revokeObjectURL(prev);
           return objUrl;
         });
-        counter.bump();
+        consumeOne();
         setLoading(false);
         return;
       }
@@ -428,7 +515,7 @@ function ImageTab() {
       const im = new window.Image();
       im.onload = () => {
         setImgUrl(data.url);
-        counter.bump();
+        consumeOne();
         setLoading(false);
       };
       im.onerror = () => {
@@ -458,6 +545,11 @@ function ImageTab() {
     <div className="panel" ref={editorRef}>
       <div className="limit-pill">
         <IconImage size={15} /> Images today: <b>{counter.remaining}</b> / {IMAGE_LIMIT} left
+        {credits.credits > 0 && (
+          <span className="bonus-pill">
+            <IconBolt size={13} /> +{credits.credits} earned
+          </span>
+        )}
       </div>
 
       <div className="ref-row">
@@ -782,6 +874,73 @@ function TokenFeed({ onUse }: { onUse: (imageUrl: string) => void }) {
   );
 }
 
+// ---------- Tap to Earn ----------
+// A round logo coin at the bottom: every TAPS_PER_POINT taps grants a bonus
+// image credit that the studio above can spend once the daily limit is used up.
+function TapToEarn() {
+  const credits = useCredits();
+  const [pop, setPop] = useState(false);
+  const [flash, setFlash] = useState(false);
+
+  const R = 54;
+  const CIRC = 2 * Math.PI * R;
+  const offset = CIRC * (1 - credits.taps / TAPS_PER_POINT);
+
+  function onTap() {
+    const earned = credits.addTap();
+    setPop(true);
+    setTimeout(() => setPop(false), 130);
+    if (earned) {
+      setFlash(true);
+      setTimeout(() => setFlash(false), 900);
+    }
+  }
+
+  return (
+    <div className="tap-section">
+      <div className="section-head">
+        <IconBolt size={22} />
+        <h2>Tap to Earn</h2>
+        <span className="sub">free image credits</span>
+      </div>
+      <div className="tap-card">
+        <button
+          type="button"
+          className={`coin${pop ? " pop" : ""}${flash ? " flash" : ""}`}
+          onClick={onTap}
+          aria-label="Tap the coin to earn image credits"
+        >
+          <svg className="coin-ring" viewBox="0 0 120 120" aria-hidden>
+            <circle className="track" cx="60" cy="60" r={R} />
+            <circle
+              className="prog"
+              cx="60"
+              cy="60"
+              r={R}
+              style={{ strokeDasharray: CIRC, strokeDashoffset: offset }}
+            />
+          </svg>
+          <span className="coin-face">
+            <Logo className="coin-logo" />
+          </span>
+        </button>
+        <div className="tap-info">
+          <div className="tap-count">
+            {credits.taps} <span>/ {TAPS_PER_POINT} taps</span>
+          </div>
+          <div className="tap-earned">
+            <IconBolt size={15} /> <b>{credits.credits}</b> image credits earned
+          </div>
+          <div className="tap-hint">
+            Every {TAPS_PER_POINT} taps = <b>1 free image</b>. Tap the coin!
+          </div>
+          {flash && <div className="tap-flash">+1 credit!</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Page() {
   return (
     <>
@@ -790,6 +949,7 @@ export default function Page() {
       <div className="app">
         <Hero />
         <ImageTab />
+        <TapToEarn />
         <div className="footer">
           AgentHood · AI image generator · daily limits
           <br />
