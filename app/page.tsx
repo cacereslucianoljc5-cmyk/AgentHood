@@ -796,8 +796,12 @@ function TokenFeed({ onUse }: { onUse: (imageUrl: string) => void }) {
     }
   }
 
-  const featured = tokens[0];
-  const rest = tokens.slice(1);
+  // El destacado (card grande) prefiere un token con logo real para que el
+  // héroe nunca salga con el avatar de colores; si ninguno tiene, usa el primero.
+  const featuredIdx = tokens.findIndex((t) => t.imageUrl);
+  const heroIdx = featuredIdx >= 0 ? featuredIdx : 0;
+  const featured = tokens[heroIdx];
+  const rest = tokens.filter((_, i) => i !== heroIdx);
 
   return (
     <div className="token-feed">
