@@ -377,6 +377,38 @@ async function enrichMissingLogos(tokens: Token[]): Promise<void> {
   // backend de NOXA esté caído. Es la fuente autoritativa para tokens nuevos.
   const missingForChain = tokens.filter((t) => !t.imageUrl && t.address).slice(0, 20);
   if (missingForChain.length) {
+    // Diagnóstico puntual del primer token: expone dónde falla la cadena.
+    const s = missingForChain[0];
+    try {
+      const br = await fetch(`${BLOCKSCOUT}/api/v2/addresses/${s.address}`, {
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      });
+      const btxt = await br.text();
+      let cx = "";
+      try {
+        const bj = JSON.parse(btxt);
+        cx = bj?.creation_transaction_hash || bj?.creation_tx_hash || "";
+      } catch {}
+      console.log(`onchain diag bs: status=${br.status} tx=${cx || "none"} body=${btxt.slice(0, 140)}`);
+      if (cx) {
+        const rr = await fetch(HOOD_RPC, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getTransactionByHash", params: [cx] }),
+          cache: "no-store",
+        });
+        const rtxt = await rr.text();
+        let inp = "";
+        try {
+          inp = JSON.parse(rtxt)?.result?.input || "";
+        } catch {}
+        console.log(`onchain diag rpc: status=${rr.status} sel=${inp.slice(0, 10)} len=${inp.length} body=${rtxt.slice(0, 100)}`);
+      }
+    } catch (e) {
+      console.log("onchain diag err", String(e).slice(0, 160));
+    }
+
     const chainResults = await Promise.all(
       missingForChain.map((t) =>
         onchainLogo(t.address).then((logo) => ({ a: t.address.toLowerCase(), logo }))
@@ -392,17 +424,19 @@ async function enrichMissingLogos(tokens: Token[]): Promise<void> {
     console.log(`enrich onchain: tried=${missingForChain.length} found=${chainMap.size}`);
   }
 
-  // Cuarta fuente (si hay key): GMGN OpenAPI, por dirección. Es la que más
-  // aporta en Robinhood Chain, así que cubrimos TODOS los que sigan sin logo.
+  // Cuarta fuente (si hay key): GMGN OpenAPI. Tiene rate-limit agresivo, así que
+  // se consulta SECUENCIALMENTE (con pausa) y solo unos pocos que sigan faltando.
   if (GMGN_KEY) {
     const addrs = tokens
       .filter((t) => !t.imageUrl && t.address)
       .map((t) => t.address)
-      .slice(0, 24);
-    const results = await Promise.all(
-      addrs.map((a) => gmgnLogo(a).then((logo) => ({ a: a.toLowerCase(), logo })))
-    );
-    const gmap = new Map(results.filter((r) => r.logo).map((r) => [r.a, r.logo]));
+      .slice(0, 10);
+    const gmap = new Map<string, string>();
+    for (const a of addrs) {
+      const logo = await gmgnLogo(a);
+      if (logo) gmap.set(a.toLowerCase(), logo);
+      await new Promise((res) => setTimeout(res, 180)); // evita 429
+    }
     for (const t of tokens) {
       if (!t.imageUrl && t.address) {
         const im = gmap.get(t.address.toLowerCase());
