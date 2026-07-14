@@ -36,14 +36,16 @@ async function gmgnLogo(address: string): Promise<string> {
   }
 }
 
-// Fuente principal: backend público del launchpad NOXA (fun.noxa.fi), que trae
-// el LOGO real que sube el creador para cada token de Robinhood Chain, incluso
-// los recién lanzados. Sin API key. El subdominio puede rotar si NOXA redepliega
-// (configurable con NOXA_BASE_URL). Respaldo: GeckoTerminal.
-const NOXA_BASE =
-  process.env.NOXA_BASE_URL || "https://awk00kk00gskkw0o8kc488kg.notoriouslywrong.com";
+// NOXA (fun.noxa.fi) trae el LOGO que sube el creador de cada token, pero NO
+// tiene un host público estable: su frontend habla con el backend solo a través
+// de túneles Cloudflare efímeros (*.notoriouslywrong.com) que rotan y caen. Por
+// eso es OPCIONAL: solo se usa si defines NOXA_BASE_URL en el entorno con un
+// túnel vivo. Sin él, la fuente primaria es GeckoTerminal (público y estable).
+const NOXA_BASE = process.env.NOXA_BASE_URL?.trim();
 const NET = process.env.HOOD_NETWORK || "robinhood";
 const GT = "https://api.geckoterminal.com/api/v2";
+// Explorer oficial de Robinhood Chain (Blockscout) — a veces expone icon_url.
+const BLOCKSCOUT = "https://robinhoodchain.blockscout.com";
 
 type Token = {
   name: string;
@@ -109,8 +111,9 @@ function normalizeLogo(logo: unknown): string {
   return "";
 }
 
-// --- Fuente principal: NOXA ---
+// --- Fuente opcional: NOXA (solo si NOXA_BASE_URL está definido) ---
 async function fetchNoxa(sort: string, limit: number, hasImage: boolean): Promise<any[]> {
+  if (!NOXA_BASE) return [];
   const url = `${NOXA_BASE}/v1/${NET}/tokens?sort=${sort}&order=desc&limit=${limit}${
     hasImage ? "&hasImage=true" : ""
   }`;
@@ -277,7 +280,35 @@ async function enrichMissingLogos(tokens: Token[]): Promise<void> {
     }
   }
 
-  // Tercera fuente (si hay key): GMGN OpenAPI, por dirección.
+  // Tercera fuente: explorer Blockscout de Robinhood Chain (icon_url por token).
+  const missingForBs = tokens.filter((t) => !t.imageUrl && t.address).slice(0, 20);
+  if (missingForBs.length) {
+    const bsResults = await Promise.all(
+      missingForBs.map(async (t) => {
+        try {
+          const r = await fetch(`${BLOCKSCOUT}/api/v2/tokens/${t.address}`, {
+            headers: { Accept: "application/json" },
+            next: { revalidate: 30 },
+          });
+          if (!r.ok) return { a: t.address.toLowerCase(), logo: "" };
+          const j: any = await r.json();
+          const img = j?.icon_url || j?.image_url || "";
+          return { a: t.address.toLowerCase(), logo: img ? String(img) : "" };
+        } catch {
+          return { a: t.address.toLowerCase(), logo: "" };
+        }
+      })
+    );
+    const bsMap = new Map(bsResults.filter((r) => r.logo).map((r) => [r.a, r.logo]));
+    for (const t of tokens) {
+      if (!t.imageUrl && t.address) {
+        const im = bsMap.get(t.address.toLowerCase());
+        if (im) t.imageUrl = normalizeLogo(im);
+      }
+    }
+  }
+
+  // Cuarta fuente (si hay key): GMGN OpenAPI, por dirección.
   if (GMGN_KEY) {
     const addrs = tokens
       .filter((t) => !t.imageUrl && t.address)
@@ -306,7 +337,8 @@ export async function GET(req: Request) {
 
   let tokens: Token[] = [];
 
-  // 1) NOXA (logo real del creador). Fuente autoritativa.
+  // 1) NOXA si hay túnel configurado (logo real del creador); si no, [] y pasa
+  //    directo a GeckoTerminal (fuente primaria estable).
   const [rows, ethUsd] = await Promise.all([
     fetchNoxa(mode === "new" ? "newest" : "volume", mode === "new" ? 100 : 40, mode !== "new"),
     getEthUsd(),
@@ -333,7 +365,7 @@ export async function GET(req: Request) {
     }
     console.log(`tokens noxa: mode=${mode} win=${win} rows=${rows.length} sent=${tokens.length}`);
   } else {
-    // 2) Respaldo GeckoTerminal solo si NOXA no respondió.
+    // 2) GeckoTerminal: fuente primaria estable (o respaldo si NOXA no respondió).
     tokens = await fetchGecko(mode);
     if (mode === "new") {
       const cutoff = Date.now() - windowMs(win);
