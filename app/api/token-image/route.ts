@@ -5,33 +5,10 @@ export const maxDuration = 30;
 
 // Proxy de imágenes de tokens: evita CORS y, para logos en IPFS, prueba varios
 // gateways rápidos hasta que uno responda (ipfs.io a veces es lento/inestable).
-const ALLOWED = [
-  "coingecko.com",
-  "geckoterminal.com",
-  "dexscreener.com",
-  "dexscreener.io",
-  "noxa.fi",
-  "notoriouslywrong.com",
-  "blockscout.com",
-  "gmgn.ai",
-  // IPFS / CDNs
-  "ipfs.io",
-  "dweb.link",
-  "nftstorage.link",
-  "pinata.cloud",
-  "mypinata.cloud",
-  "4everland.io",
-  "ipfscdn.io",
-  "w3s.link",
-  "cloudflare-ipfs.com",
-  "arweave.net",
-  "cloudfront.net",
-  "amazonaws.com",
-  "akamaized.net",
-  "imagedelivery.net",
-  "googleusercontent.com",
-  "robinhood.com",
-];
+// Los logos de los tokens vienen de fuentes muy variadas (IPFS, CDNs de
+// launchpads, etc.), así que en vez de una allowlist rígida bloqueamos solo los
+// destinos peligrosos (IPs privadas/internas) y validamos que la respuesta sea
+// realmente una imagen (content-type image/*). Eso evita SSRF sin romper logos.
 
 // Gateways IPFS por orden de preferencia (rápidos y fiables primero).
 const IPFS_GATEWAYS = [
@@ -42,9 +19,33 @@ const IPFS_GATEWAYS = [
   "https://4everland.io/ipfs/",
 ];
 
-function hostAllowed(host: string): boolean {
+// Bloquea destinos internos/privados (protección SSRF). Los hosts públicos
+// pasan; la validación de content-type image/* hace el resto.
+function isPrivateHost(host: string): boolean {
   const h = host.toLowerCase();
-  return ALLOWED.some((d) => h === d || h.endsWith("." + d));
+  if (
+    h === "localhost" ||
+    h.endsWith(".localhost") ||
+    h.endsWith(".internal") ||
+    h.endsWith(".local") ||
+    h === "metadata.google.internal"
+  ) {
+    return true;
+  }
+  const m = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m) {
+    const a = +m[1];
+    const b = +m[2];
+    if (a === 0 || a === 10 || a === 127) return true;
+    if (a === 169 && b === 254) return true; // link-local (metadata de la nube)
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+  }
+  if (h === "::1" || h.startsWith("fc") || h.startsWith("fd") || h.startsWith("fe80")) {
+    return true;
+  }
+  return false;
 }
 
 // Extrae el CID (+ subpath) si la URL es un gateway IPFS conocido.
@@ -92,7 +93,7 @@ export async function GET(req: Request) {
   if (target.protocol !== "https:") {
     return NextResponse.json({ error: "https only" }, { status: 400 });
   }
-  if (!hostAllowed(target.hostname)) {
+  if (isPrivateHost(target.hostname)) {
     return NextResponse.json({ error: "host not allowed" }, { status: 400 });
   }
 

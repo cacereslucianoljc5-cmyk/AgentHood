@@ -430,45 +430,6 @@ async function enrichMissingLogos(tokens: Token[]): Promise<void> {
   // backend de NOXA esté caído. Es la fuente autoritativa para tokens nuevos.
   const missingForChain = tokens.filter((t) => !t.imageUrl && t.address).slice(0, 20);
   if (missingForChain.length) {
-    // Diagnóstico puntual del primer token: expone dónde falla la cadena.
-    const s = missingForChain[0];
-    try {
-      const br = await fetch(`${BLOCKSCOUT}/api/v2/addresses/${s.address}`, {
-        headers: { Accept: "application/json" },
-        cache: "no-store",
-      });
-      const btxt = await br.text();
-      let cx = "";
-      try {
-        const bj = JSON.parse(btxt);
-        cx = bj?.creation_transaction_hash || bj?.creation_tx_hash || "";
-      } catch {}
-      console.log(`onchain diag bs: status=${br.status} tx=${cx || "none"} body=${btxt.slice(0, 140)}`);
-      if (cx) {
-        const rr = await fetch(HOOD_RPC, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getTransactionByHash", params: [cx] }),
-          cache: "no-store",
-        });
-        const rtxt = await rr.text();
-        let inp = "";
-        try {
-          inp = JSON.parse(rtxt)?.result?.input || "";
-        } catch {}
-        const strs = extractCalldataStrings(inp);
-        let picked = pickLogoString(strs);
-        if (picked && /\.json(\?|$)|\/metadata\//i.test(picked)) {
-          picked = (await resolveMetadataImage(picked)) || `json:${picked}`;
-        }
-        console.log(
-          `onchain diag rpc: status=${rr.status} sel=${inp.slice(0, 10)} len=${inp.length} strs=${strs.length} logo=${picked.slice(0, 80) || "NONE"} sample=${strs.slice(0, 6).map((x) => x.slice(0, 24)).join(" | ")}`
-        );
-      }
-    } catch (e) {
-      console.log("onchain diag err", String(e).slice(0, 160));
-    }
-
     const chainResults = await Promise.all(
       missingForChain.map((t) =>
         onchainLogo(t.address).then((logo) => ({ a: t.address.toLowerCase(), logo }))
