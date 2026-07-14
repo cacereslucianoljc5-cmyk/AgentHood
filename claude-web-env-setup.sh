@@ -1,33 +1,33 @@
 #!/bin/bash
-# ============================================================================
-#  Setup script para Claude Code on the web (entorno en la nube)
-#  Pega TODO este contenido en:  Entorno -> Editar -> campo "Setup script"
-#
-#  Qué hace: escribe un .mcp.json en la raíz del repo clonado de CADA sesión,
-#  de modo que los 5 servidores MCP de UI queden disponibles automáticamente
-#  en CUALQUIER repo (actual o futuro), sin configurarlos uno por uno.
-#
-#  Nota sobre 21st.dev Magic: necesita una API key. Añádela como variable de
-#  entorno del entorno (campo "Environment variables"):
-#      MAGIC_21ST_API_KEY=tu_api_key_de_21st_dev
-#  Los otros 4 servidores funcionan sin ninguna key.
-# ============================================================================
+# Setup script para Claude Code on the web.
+# Escribe .mcp.json con 6 servidores MCP de UI (incluida la API key de
+# 21st.dev) en el repo de CADA sesion -> disponibles en cualquier repo,
+# presente o futuro. No necesita variables de entorno aparte.
 set -e
 
-# Raíz del repo de la sesión (Claude Code lanza con el repo como working dir).
 TARGET_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"
+MCP_FILE="${TARGET_DIR}/.mcp.json"
 
-cat > "${TARGET_DIR}/.mcp.json" <<'JSON'
+cat > "${MCP_FILE}" <<'JSON'
 {
   "mcpServers": {
     "magicui":    { "command": "npx", "args": ["-y", "@magicuidesign/mcp@latest"] },
     "reactbits":  { "command": "npx", "args": ["-y", "reactbits-dev-mcp-server"] },
     "aceternity": { "command": "npx", "args": ["-y", "aceternityui-mcp"] },
     "ui-layouts": { "command": "npx", "args": ["-y", "@ui-layouts/mcp"] },
+    "shadcn":     { "command": "npx", "args": ["-y", "shadcn@latest", "mcp"] },
     "magic21":    { "command": "npx", "args": ["-y", "@21st-dev/magic@latest"],
-                    "env": { "API_KEY": "${MAGIC_21ST_API_KEY}" } }
+                    "env": { "API_KEY": "21st_sk_37dfab7228cda550be37e8217cc7e6ff5be5a8a3f2f397d1c8f966cbcb44cfe0" } }
   }
 }
 JSON
 
-echo "[setup] .mcp.json con 5 servidores UI escrito en ${TARGET_DIR}"
+# Blindaje: evita que la API key se filtre a git en cualquier repo.
+if [ -d "${TARGET_DIR}/.git" ]; then
+  grep -qxF '.mcp.json' "${TARGET_DIR}/.git/info/exclude" 2>/dev/null \
+    || echo '.mcp.json' >> "${TARGET_DIR}/.git/info/exclude"
+  git -C "${TARGET_DIR}" ls-files --error-unmatch .mcp.json >/dev/null 2>&1 \
+    && git -C "${TARGET_DIR}" update-index --skip-worktree .mcp.json 2>/dev/null || true
+fi
+
+echo "[setup] .mcp.json con 6 servidores UI (21st.dev + shadcn incluidos) en ${TARGET_DIR}"
