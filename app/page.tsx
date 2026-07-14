@@ -237,32 +237,24 @@ function Logo({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 64 64" fill="none" aria-hidden>
       <defs>
-        <linearGradient id="lg" x1="12" y1="52" x2="52" y2="12" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#6fd24e" />
-          <stop offset="0.5" stopColor="#c6f24e" />
-          <stop offset="1" stopColor="#e2ff6c" />
+        <linearGradient id="lg" x1="16" y1="56" x2="50" y2="10" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#3fbf46" />
+          <stop offset="0.5" stopColor="#a7ee2f" />
+          <stop offset="1" stopColor="#e3ff5a" />
         </linearGradient>
       </defs>
-      {/* feather / leaf body */}
+      {/* leaf body: rounded top, midrib notch, tapering stem */}
       <path
-        d="M54.6 8.4C29.2 11.7 12.4 29 10 53.6c-.2 1.8 2 2.8 3.3 1.5C33 36 45.6 24 56.4 12.1c1.6-1.7-.4-4-1.8-3.7z"
+        d="M40 8c6 0 10 4 10 10 0 18-9 30-24 38l-2-1c1-15 7-27 20-35-11 5-18 14-21 27-3-4-4-9-4-14C19 22 28 8 40 8z"
         fill="url(#lg)"
       />
-      {/* central spine */}
+      {/* stem */}
       <path
-        d="M49 14.5C34 27 20.5 40.5 12.6 54"
-        stroke="#0c2411"
-        strokeWidth="1.8"
+        d="M24 47c-3 4-6 8-8 12"
+        stroke="url(#lg)"
+        strokeWidth="3"
         strokeLinecap="round"
-        opacity="0.4"
-      />
-      {/* barbs */}
-      <path
-        d="M41 22l-8 3M35 30l-9 3.4M28.5 38l-8.4 3.6"
-        stroke="#0c2411"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-        opacity="0.28"
+        fill="none"
       />
     </svg>
   );
