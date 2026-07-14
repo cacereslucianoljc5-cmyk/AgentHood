@@ -232,31 +232,11 @@ function IconLock({ size = 22 }: { size?: number }) {
   );
 }
 
-// ---------- Brand logo (green leaf / arrow mark, Robinhood-style) ----------
+// ---------- Brand logo (green leaf / arrow mark) ----------
 function Logo({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 64 64" fill="none" aria-hidden>
-      <defs>
-        <linearGradient id="lg" x1="18" y1="58" x2="48" y2="10" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#38c23f" />
-          <stop offset="0.55" stopColor="#a3ee2a" />
-          <stop offset="1" stopColor="#e6ff5c" />
-        </linearGradient>
-      </defs>
-      {/* original green feather: rounded top lobe, midrib, tapering stem */}
-      <path
-        d="M44 9c4.6 0 7.8 3.4 7.8 8 0 2.9-1.2 5.6-3.2 8.2l-14.8 0 6.2 6.4C33 39.5 25.8 47 17.8 53.2l-2.4-1.6C18.4 36 26 22.4 40 12c-12.2 5.6-20 16-22.6 30.4C15 38.7 13.8 34.2 13.8 29.4 13.8 17 27 9 44 9z"
-        fill="url(#lg)"
-      />
-      {/* stem */}
-      <path
-        d="M17.6 51.8C14.4 55.4 12.2 59 11 63"
-        stroke="url(#lg)"
-        strokeWidth="3.2"
-        strokeLinecap="round"
-        fill="none"
-      />
-    </svg>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img className={className} src="/logo.png" alt="AgentHood" width={64} height={64} />
   );
 }
 
