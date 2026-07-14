@@ -136,65 +136,156 @@ function useDailyCounter(name: string, max: number) {
   return { used, remaining: Math.max(0, max - used), bump };
 }
 
-function Mascot() {
-  const [broken, setBroken] = useState(false);
-  if (broken) {
-    return (
-      <div className="mascot-fallback" aria-hidden>
-        <svg width="52" height="52" viewBox="0 0 24 24" fill="none">
-          <path
-            d="M12 2l8.66 5v10L12 22 3.34 17V7L12 2z"
-            stroke="var(--neon)"
-            strokeWidth="1.5"
-            fill="none"
-          />
-          <circle cx="12" cy="12" r="3.2" fill="var(--neon)" />
-        </svg>
-      </div>
-    );
-  }
+// ---------- Feature-chip icons ----------
+function IconBolt({ size = 22 }: { size?: number }) {
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      className="mascot"
-      src="/mascot.png"
-      alt="AgentHood"
-      onError={() => setBroken(true)}
-    />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+    </svg>
+  );
+}
+function IconBrain({ size = 22 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2z" />
+      <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2z" />
+    </svg>
+  );
+}
+function IconSparkles({ size = 22 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M12 3l1.8 4.7L18.5 9.5 13.8 11.3 12 16l-1.8-4.7L5.5 9.5l4.7-1.8L12 3z" />
+      <path d="M19 14l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7.7-1.9z" />
+    </svg>
+  );
+}
+function IconLock({ size = 22 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="3" y="11" width="18" height="11" rx="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
   );
 }
 
-function Wordmark() {
-  const [broken, setBroken] = useState(false);
+// ---------- Brand logo (green leaf / arrow mark, Robinhood-style) ----------
+function Logo({ className }: { className?: string }) {
   return (
-    <div className="wordmark-wrap">
-      {broken ? (
-        <div className="wordmark">
-          <span className="hood">Agent</span>
-          <span className="agent">Hood</span>
+    <svg className={className} viewBox="0 0 64 64" fill="none" aria-hidden>
+      <defs>
+        <linearGradient id="lg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#d7ff5e" />
+          <stop offset="0.55" stopColor="#c6f24e" />
+          <stop offset="1" stopColor="#86e05a" />
+        </linearGradient>
+      </defs>
+      {/* leaf body */}
+      <path
+        d="M50 8C28 8 12 22 12 42c0 5 1.4 9.6 3.8 13.4C20 40 31 30 48 26c-13 6-21 16-24 30 3 1.6 6.6 2.5 10.5 2.5C50 58.5 56 44 56 26c0-7-2-13-6-18z"
+        fill="url(#lg)"
+      />
+    </svg>
+  );
+}
+
+// ---------- Animated background reacting to scroll + clicks ----------
+function BgFX() {
+  useEffect(() => {
+    let raf = 0;
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        document.documentElement.style.setProperty("--sy", `${window.scrollY}px`);
+        raf = 0;
+      });
+    };
+    const onClick = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      // Don't ripple on interactive controls to avoid distraction.
+      if (t.closest("button, a, input, textarea, label")) return;
+      const r = document.createElement("span");
+      r.className = "ripple";
+      r.style.left = `${e.clientX}px`;
+      r.style.top = `${e.clientY}px`;
+      document.body.appendChild(r);
+      setTimeout(() => r.remove(), 950);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("click", onClick);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("click", onClick);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, []);
+  return (
+    <div className="bgfx" aria-hidden>
+      <div className="blob b1" />
+      <div className="blob b2" />
+      <div className="blob b3" />
+      <div className="grid" />
+    </div>
+  );
+}
+
+function Topbar() {
+  return (
+    <div className="topbar">
+      <div className="brand">
+        <Logo className="logo" />
+        <div className="name">
+          Agent<b>Hood</b>
         </div>
-      ) : (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          className="wordmark-img"
-          src="/wordmark.jpg"
-          alt="AgentHood"
-          onError={() => setBroken(true)}
-        />
-      )}
-      <div className="tagline">
-        Imagine. <b>Describe</b>. <b>Create</b>.
+      </div>
+      <div className="chain-badge">
+        <span className="dot" /> Robinhood Chain
       </div>
     </div>
   );
 }
 
-function Header() {
+function Hero() {
+  const features = [
+    { icon: <IconBolt />, label: "Instant answers" },
+    { icon: <IconBrain />, label: "Understands your context" },
+    { icon: <IconSparkles />, label: "Ideas that drive you" },
+    { icon: <IconLock />, label: "Privacy first" },
+  ];
   return (
-    <header className="header">
-      <Mascot />
-      <Wordmark />
-    </header>
+    <>
+      <section className="hero">
+        <div className="hero-logo">
+          <Logo />
+        </div>
+        <div>
+          <h1>
+            Your mind. <span className="grad">Our AI.</span>
+            <br />
+            Extraordinary results.
+          </h1>
+          <p className="sub">
+            Turn a single sentence into a finished image — or drop in a reference
+            and let the AI <b>edit it</b> for you. Free, fast, no sign-up.
+          </p>
+          <div className="divider" />
+        </div>
+      </section>
+
+      <div className="features">
+        {features.map((f) => (
+          <div className="feature" key={f.label}>
+            {f.icon}
+            <span>{f.label}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="slogan">
+        <span className="w">ASK.</span> <span className="g">CREATE.</span>{" "}
+        <span className="w">ACHIEVE.</span> <span className="g">WITHOUT LIMITS.</span>
+      </div>
+    </>
   );
 }
 
@@ -359,6 +450,11 @@ function ImageTab() {
 
   return (
     <>
+    <div className="section-head">
+      <IconImage size={22} />
+      <h2>AI Image Studio</h2>
+      <span className="sub">generate &amp; edit</span>
+    </div>
     <div className="panel" ref={editorRef}>
       <div className="limit-pill">
         <IconImage size={15} /> Images today: <b>{counter.remaining}</b> / {IMAGE_LIMIT} left
@@ -688,14 +784,18 @@ function TokenFeed({ onUse }: { onUse: (imageUrl: string) => void }) {
 
 export default function Page() {
   return (
-    <div className="wrap">
-      <Header />
-      <ImageTab />
-      <div className="footer">
-        AgentHood · AI image generator · daily limits
-        <br />
-        Use responsibly — don&apos;t generate harmful or illegal content.
+    <>
+      <BgFX />
+      <Topbar />
+      <div className="app">
+        <Hero />
+        <ImageTab />
+        <div className="footer">
+          AgentHood · AI image generator · daily limits
+          <br />
+          Use responsibly — don&apos;t generate harmful or illegal content.
+        </div>
       </div>
-    </div>
+    </>
   );
 }
