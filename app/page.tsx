@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NumberTicker } from "./components/NumberTicker";
 import GradientText from "./components/GradientText";
 import RippleCursor from "./components/RippleCursor";
+import UiverseSpinner from "./components/UiverseSpinner";
+import BarWave from "./components/BarWave";
 
 /* ============================================================================
    StockSprout — tokenized stock packs on Robinhood Chain.
@@ -783,6 +785,7 @@ function OpeningModal({
               <div className="reel-glow" />
               <TickerBadge stock={current} size={92} />
               <div className="reel-tick">{current.ticker}</div>
+              <UiverseSpinner />
               <div className="reel-hint">
                 {phase === "charging" ? "Requesting randomness…" : "Swapping on Uniswap v4…"}
               </div>
@@ -1220,12 +1223,17 @@ function LiveOpenings() {
 
   return (
     <section className="section" id="live">
-      <SectionHead
-        icon={<IconOrbit />}
-        kicker="Live openings"
-        title="The vault never sleeps."
-        sub="Real-time reveals across the chain."
-      />
+      <div className="live-head-row">
+        <SectionHead
+          icon={<IconOrbit />}
+          kicker="Live openings"
+          title="The vault never sleeps."
+          sub="Real-time reveals across the chain."
+        />
+        <div className="barwave-wrap" title="Market is live — hover the bars">
+          <BarWave size={132} />
+        </div>
+      </div>
       <div className="live-feed">
         {merged.length === 0 && (
           <div className="live-empty">Open a pack to see it appear here.</div>
@@ -1306,9 +1314,9 @@ function Footer() {
         <span>
           <IconChain size={13} /> Built on Robinhood Chain
         </span>
-        <a href="#how">Docs</a>
-        <a href="#packs">Packs</a>
-        <a href="#stocks">Stocks</a>
+        <a href="#how" className="uil-underline">Docs</a>
+        <a href="#packs" className="uil-underline">Packs</a>
+        <a href="#stocks" className="uil-underline">Stocks</a>
         <span>{v.packsOpened} packs opened locally</span>
       </div>
       <div className="footer-fine">
