@@ -1,247 +1,203 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import {
+  motion,
+  useInView,
+  useMotionValue,
+  animate,
+  useReducedMotion,
+  type Variants,
+} from "framer-motion";
+import {
+  Running,
+  Cpu,
+  Sparks,
+  Wallet,
+  Trophy,
+  Rocket,
+  Network,
+  Community,
+  DatabaseScript,
+  Database,
+  ArrowRight,
+  ArrowUpRight,
+  ShieldCheck,
+  Building,
+  Packages,
+  Cube,
+  Globe,
+  Activity,
+  GraphUp,
+  Coins,
+  Group as GroupIcon,
+  Twitter,
+  Discord,
+  Telegram,
+  Youtube,
+  Instagram,
+  Linkedin,
+  CheckCircle,
+  Flash,
+  Atom,
+  Cloud,
+  Wrench,
+  Medal,
+} from "iconoir-react";
 
-type Ratio = "square" | "landscape" | "portrait";
+/* ============================================================
+   Motion primitives — every element reveals on enter, staggered.
+   ============================================================ */
+const easeOut = [0.22, 1, 0.36, 1] as const;
 
-// Client-side daily counter (UX display). Server enforces the real limit.
-const IMAGE_LIMIT = 20;
+const groupV: Variants = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.09, delayChildren: 0.05 } },
+};
+const itemV: Variants = {
+  hidden: { opacity: 0, y: 26, filter: "blur(6px)" },
+  show: {
+    opacity: 1,
+    y: 0,
+    filter: "blur(0px)",
+    transition: { duration: 0.7, ease: easeOut },
+  },
+};
 
-// Tap-to-earn: every TAPS_PER_POINT taps grants 1 bonus image credit.
-const TAPS_PER_POINT = 50;
-
-// ---------- Shared bonus-credits store (localStorage + live events) ----------
-// Credits earned by tapping are persistent and shared across components: the
-// image counter reads them and the tap game writes them, kept in sync via a
-// window event so both re-render together.
-const CREDITS_EVENT = "hood-credits";
-
-function readCredits(): { taps: number; credits: number } {
-  try {
-    const taps = Number(localStorage.getItem("hood_taps") || 0);
-    const credits = Number(localStorage.getItem("hood_credits") || 0);
-    return { taps: taps || 0, credits: credits || 0 };
-  } catch {
-    return { taps: 0, credits: 0 };
-  }
+/** Container that staggers its children into view, one by one. */
+function Group({
+  children,
+  className,
+  as = "div",
+  amount = 0.2,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  as?: "div" | "section" | "ul";
+  amount?: number;
+}) {
+  const M = motion[as] as typeof motion.div;
+  return (
+    <M
+      className={className}
+      variants={groupV}
+      initial="hidden"
+      whileInView="show"
+      viewport={{ once: true, amount }}
+    >
+      {children}
+    </M>
+  );
 }
 
-function writeCredits(taps: number, credits: number) {
-  try {
-    localStorage.setItem("hood_taps", String(taps));
-    localStorage.setItem("hood_credits", String(credits));
-  } catch {}
-  window.dispatchEvent(new CustomEvent(CREDITS_EVENT, { detail: { taps, credits } }));
+/** A single element that fades + rises when its Group enters. */
+function Item({
+  children,
+  className,
+  as = "div",
+}: {
+  children: React.ReactNode;
+  className?: string;
+  as?: "div" | "li" | "h1" | "h2" | "h3" | "p" | "span" | "a";
+}) {
+  const M = motion[as] as typeof motion.div;
+  return (
+    <M className={className} variants={itemV}>
+      {children}
+    </M>
+  );
 }
 
-function useCredits() {
-  const [state, setState] = useState({ taps: 0, credits: 0 });
+/* ---------- Animated count-up for the big numbers ---------- */
+function CountUp({
+  to,
+  prefix = "",
+  suffix = "",
+  decimals = 0,
+  duration = 1.8,
+}: {
+  to: number;
+  prefix?: string;
+  suffix?: string;
+  decimals?: number;
+  duration?: number;
+}) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const inView = useInView(ref, { once: true, amount: 0.6 });
+  const mv = useMotionValue(0);
+  const reduce = useReducedMotion();
+  const [txt, setTxt] = useState("0");
+
   useEffect(() => {
-    setState(readCredits());
-    const onChange = (e: Event) => {
-      const d = (e as CustomEvent).detail as { taps: number; credits: number };
-      setState(d ?? readCredits());
+    if (!inView) return;
+    if (reduce) {
+      setTxt(to.toFixed(decimals));
+      return;
+    }
+    const controls = animate(mv, to, {
+      duration,
+      ease: easeOut,
+      onUpdate: (v) => setTxt(v.toFixed(decimals)),
+    });
+    return () => controls.stop();
+  }, [inView, to, decimals, duration, mv, reduce]);
+
+  return (
+    <span ref={ref} className="num">
+      {prefix}
+      {txt}
+      <span className="suf">{suffix}</span>
+    </span>
+  );
+}
+
+/* ---------- Custom soft cursor ---------- */
+function Cursor() {
+  const dotRef = useRef<HTMLDivElement>(null);
+  const ringRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (window.matchMedia("(pointer: coarse)").matches) return;
+    const dot = dotRef.current!;
+    const ring = ringRef.current!;
+    let mx = window.innerWidth / 2;
+    let my = window.innerHeight / 2;
+    let rx = mx;
+    let ry = my;
+    let raf = 0;
+
+    const move = (e: MouseEvent) => {
+      mx = e.clientX;
+      my = e.clientY;
+      dot.style.transform = `translate3d(${mx}px, ${my}px, 0) translate(-50%, -50%)`;
+      const t = e.target as HTMLElement;
+      const hot = !!t.closest("a, button, [data-cursor]");
+      ring.classList.toggle("hover", hot);
     };
-    window.addEventListener(CREDITS_EVENT, onChange);
-    return () => window.removeEventListener(CREDITS_EVENT, onChange);
+    const loop = () => {
+      rx += (mx - rx) * 0.16;
+      ry += (my - ry) * 0.16;
+      ring.style.transform = `translate3d(${rx}px, ${ry}px, 0) translate(-50%, -50%)`;
+      raf = requestAnimationFrame(loop);
+    };
+    window.addEventListener("mousemove", move);
+    raf = requestAnimationFrame(loop);
+    return () => {
+      window.removeEventListener("mousemove", move);
+      cancelAnimationFrame(raf);
+    };
   }, []);
 
-  const addTap = () => {
-    const cur = readCredits();
-    let taps = cur.taps + 1;
-    let credits = cur.credits;
-    let earned = false;
-    if (taps >= TAPS_PER_POINT) {
-      taps -= TAPS_PER_POINT;
-      credits += 1;
-      earned = true;
-    }
-    writeCredits(taps, credits);
-    return earned;
-  };
-
-  const spendCredit = () => {
-    const cur = readCredits();
-    if (cur.credits <= 0) return false;
-    writeCredits(cur.taps, cur.credits - 1);
-    return true;
-  };
-
-  return { ...state, addTap, spendCredit };
-}
-
-// ---------- Inline SVG icons (inherit color via currentColor) ----------
-function IconImage({ size = 18 }: { size?: number }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <rect x="3" y="3" width="18" height="18" rx="2" />
-      <circle cx="8.5" cy="8.5" r="1.5" />
-      <path d="M21 15l-5-5L5 21" />
-    </svg>
+    <>
+      <div ref={ringRef} className="cursor-ring" aria-hidden />
+      <div ref={dotRef} className="cursor-dot" aria-hidden />
+    </>
   );
 }
 
-function IconDownload({ size = 16 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <path d="M7 10l5 5 5-5" />
-      <path d="M12 15V3" />
-    </svg>
-  );
-}
-
-function IconUpload({ size = 16 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <path d="M17 8l-5-5-5 5" />
-      <path d="M12 3v12" />
-    </svg>
-  );
-}
-
-function IconEdit({ size = 16 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />
-    </svg>
-  );
-}
-
-function IconFlame({ size = 16 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
-    </svg>
-  );
-}
-
-function todayKey() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function useDailyCounter(name: string, max: number) {
-  const [used, setUsed] = useState(0);
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(`hood_${name}`);
-      if (raw) {
-        const p = JSON.parse(raw);
-        if (p.day === todayKey()) setUsed(p.used);
-        else localStorage.removeItem(`hood_${name}`);
-      }
-    } catch {}
-  }, [name]);
-  const bump = () => {
-    setUsed((u) => {
-      const next = u + 1;
-      try {
-        localStorage.setItem(
-          `hood_${name}`,
-          JSON.stringify({ day: todayKey(), used: next })
-        );
-      } catch {}
-      return next;
-    });
-  };
-  return { used, remaining: Math.max(0, max - used), bump };
-}
-
-// ---------- Feature-chip icons ----------
-function IconBolt({ size = 22 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-    </svg>
-  );
-}
-function IconBrain({ size = 22 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2z" />
-      <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2z" />
-    </svg>
-  );
-}
-function IconSparkles({ size = 22 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M12 3l1.8 4.7L18.5 9.5 13.8 11.3 12 16l-1.8-4.7L5.5 9.5l4.7-1.8L12 3z" />
-      <path d="M19 14l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7.7-1.9z" />
-    </svg>
-  );
-}
-function IconLock({ size = 22 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <rect x="3" y="11" width="18" height="11" rx="2" />
-      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-    </svg>
-  );
-}
-
-// ---------- Brand logo (green leaf / arrow mark) ----------
-function Logo({ className }: { className?: string }) {
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img className={className} src="/logo.png" alt="AgentHood" width={64} height={64} />
-  );
-}
-
-// ---------- Animated background reacting to scroll + clicks ----------
-function BgFX() {
+/* ---------- Ambient animated background ---------- */
+function Background() {
   useEffect(() => {
     let raf = 0;
     const onScroll = () => {
@@ -251,687 +207,705 @@ function BgFX() {
         raf = 0;
       });
     };
-    const onClick = (e: MouseEvent) => {
-      const t = e.target as HTMLElement;
-      // Don't ripple on interactive controls to avoid distraction.
-      if (t.closest("button, a, input, textarea, label")) return;
-      const r = document.createElement("span");
-      r.className = "ripple";
-      r.style.left = `${e.clientX}px`;
-      r.style.top = `${e.clientY}px`;
-      document.body.appendChild(r);
-      setTimeout(() => r.remove(), 950);
-    };
     window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("click", onClick);
     return () => {
       window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("click", onClick);
       if (raf) cancelAnimationFrame(raf);
     };
   }, []);
   return (
     <div className="bgfx" aria-hidden>
-      <div className="blob b1" />
-      <div className="blob b2" />
-      <div className="blob b3" />
-      <div className="grid" />
+      <div className="orb o1" />
+      <div className="orb o2" />
+      <div className="orb o3" />
+      <div className="dots" />
     </div>
   );
 }
 
-function Topbar() {
+/* ---------- Brand mark ---------- */
+function LogoMark({ className = "mark" }: { className?: string }) {
   return (
-    <div className="topbar">
-      <div className="brand">
-        <Logo className="logo" />
-        <div className="name">
-          Agent<b>Hood</b>
-        </div>
-      </div>
-      <div className="chain-badge">
-        <span className="dot" /> Robinhood Chain
-      </div>
-    </div>
+    <svg className={className} viewBox="0 0 64 64" fill="none" aria-hidden>
+      <rect width="64" height="64" rx="16" fill="#223c2d" />
+      <g stroke="#b4cf48" strokeWidth="2.6" strokeLinecap="round">
+        <path d="M32 22 L17 38 M32 22 L47 38 M20 42 L44 42" />
+      </g>
+      <circle cx="32" cy="18" r="4.2" fill="#c7e05f" />
+      <circle cx="17" cy="42" r="4.2" fill="#b4cf48" />
+      <circle cx="47" cy="42" r="4.2" fill="#b4cf48" />
+    </svg>
   );
 }
+
+/* ============================================================
+   Sections
+   ============================================================ */
+function Nav() {
+  return (
+    <motion.nav
+      className="nav"
+      initial={{ opacity: 0, y: -18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.7, ease: easeOut }}
+    >
+      <div className="nav-inner">
+        <a className="brand" href="#top">
+          <LogoMark />
+          <span className="bname">
+            Humanoid<b>Network</b>
+          </span>
+        </a>
+        <div className="nav-links">
+          <a href="#product">Product</a>
+          <a href="#technology">Technology</a>
+          <a href="#points">Points</a>
+          <a href="#roadmap">Roadmap</a>
+          <a href="#team">Team</a>
+        </div>
+        <div className="nav-cta">
+          <a className="btn btn-ghost sm ghost-hide" href="#points">
+            Docs
+          </a>
+          <a className="btn btn-primary sm" href="#points">
+            <Wallet width={17} height={17} /> Launch App
+          </a>
+        </div>
+      </div>
+    </motion.nav>
+  );
+}
+
+const HERO_SATS = [
+  { Icon: Running, s: { top: "2%", left: "44%" } },
+  { Icon: Cpu, s: { top: "26%", right: "-2%" } },
+  { Icon: DatabaseScript, s: { bottom: "6%", right: "12%" } },
+  { Icon: ShieldCheck, s: { bottom: "-2%", left: "40%" } },
+  { Icon: Globe, s: { bottom: "16%", left: "-3%" } },
+  { Icon: Community, s: { top: "22%", left: "0%" } },
+];
 
 function Hero() {
-  const features = [
-    { icon: <IconBolt />, label: "Instant answers" },
-    { icon: <IconBrain />, label: "Understands your context" },
-    { icon: <IconSparkles />, label: "Ideas that drive you" },
-    { icon: <IconLock />, label: "Privacy first" },
-  ];
+  const reduce = useReducedMotion();
   return (
-    <>
-      <section className="hero">
-        <div className="hero-logo">
-          <Logo />
-        </div>
-        <div>
+    <section className="hero wrap" id="top">
+      <div>
+        <motion.span
+          className="eyebrow"
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15, duration: 0.6, ease: easeOut }}
+        >
+          <span className="spark" /> Pre-TGE live · Season 1 points farming
+        </motion.span>
+
+        <Group>
           <h1>
-            Your mind. <span className="grad">Our AI.</span>
-            <br />
-            Extraordinary results.
+            <Item as="span" className="line">
+              Any Robot.
+            </Item>
+            <Item as="span" className="line">
+              Any Task.
+            </Item>
+            <Item as="span" className="line grad-text">
+              One Network.
+            </Item>
           </h1>
-          <p className="sub">
-            Turn a single sentence into a finished image — or drop in a reference
-            and let the AI <b>edit it</b> for you. Free, fast, no sign-up.
+          <Item as="p" className="sub">
+            The open <b>robotics data &amp; skill hub</b> — a physics-validated
+            motion marketplace that lets robots communicate, learn and evolve
+            together. The operating layer for embodied AI.
+          </Item>
+          <Item className="hero-actions">
+            <a className="btn btn-primary" href="#points">
+              <Sparks width={18} height={18} /> Start earning points
+            </a>
+            <a className="btn btn-ghost" href="#product">
+              Explore the network <ArrowRight width={17} height={17} />
+            </a>
+          </Item>
+          <Item className="hero-note">
+            <span className="av">
+              <span />
+              <span />
+              <span />
+              <span />
+            </span>
+            Join contributors farming HAN ahead of the Q1 2026 TGE
+          </Item>
+        </Group>
+      </div>
+
+      <div className="hero-visual">
+        <motion.div
+          className="node-orb"
+          initial={{ opacity: 0, scale: 0.85 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.25, duration: 0.9, ease: easeOut }}
+        >
+          <div className="glow-blob" />
+          <motion.div
+            className="ring"
+            animate={reduce ? {} : { rotate: 360 }}
+            transition={{ duration: 60, repeat: Infinity, ease: "linear" }}
+          />
+          <motion.div
+            className="ring r2"
+            animate={reduce ? {} : { rotate: -360 }}
+            transition={{ duration: 42, repeat: Infinity, ease: "linear" }}
+          />
+          <div className="ring r3" />
+          <div className="core">
+            <Network width={54} height={54} />
+          </div>
+          {HERO_SATS.map(({ Icon, s }, i) => (
+            <motion.div
+              key={i}
+              className="sat"
+              style={s}
+              animate={reduce ? {} : { y: [0, -9, 0] }}
+              transition={{
+                duration: 4 + i * 0.6,
+                repeat: Infinity,
+                ease: "easeInOut",
+                delay: i * 0.3,
+              }}
+            >
+              <Icon width={22} height={22} />
+            </motion.div>
+          ))}
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+const STATS = [
+  { to: 85, suffix: "M", lbl: "Global worker gap projected by 2030" },
+  { to: 24, prefix: "$", suffix: "T", lbl: "Labor automation market by value" },
+  { to: 100, suffix: "%", lbl: "Motions physics-validated on-chain" },
+  { to: 2026, lbl: "HAN Token Generation Event · Q1", plain: true },
+];
+
+function Stats() {
+  return (
+    <Group className="stats wrap" amount={0.3}>
+      {STATS.map((s, i) => (
+        <Item className="stat" key={i}>
+          {s.plain ? (
+            <span className="num">Q1&nbsp;{s.to}</span>
+          ) : (
+            <CountUp to={s.to} prefix={s.prefix} suffix={s.suffix} />
+          )}
+          <div className="lbl">{s.lbl}</div>
+        </Item>
+      ))}
+    </Group>
+  );
+}
+
+const INDUSTRIES = [
+  { Icon: Packages, t: "Logistics" },
+  { Icon: Wrench, t: "Manufacturing" },
+  { Icon: Community, t: "Elder care" },
+  { Icon: Building, t: "Construction" },
+  { Icon: Cube, t: "Home services" },
+];
+
+function Marquee() {
+  const row = [...INDUSTRIES, ...INDUSTRIES];
+  return (
+    <div className="wrap">
+      <motion.div
+        className="marquee"
+        initial={{ opacity: 0 }}
+        whileInView={{ opacity: 1 }}
+        viewport={{ once: true }}
+        transition={{ duration: 0.8 }}
+      >
+        <div className="marquee-track">
+          {row.map(({ Icon, t }, i) => (
+            <span className="marquee-item" key={i}>
+              <Icon width={26} height={26} /> {t}
+            </span>
+          ))}
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function Features() {
+  return (
+    <section className="block wrap" id="product">
+      <div className="block-head">
+        <Group>
+          <Item as="span" className="eyebrow">
+            <span className="spark" /> The product
+          </Item>
+          <Item as="h2" className="section-title" >
+            The <span className="grad-text">Hugging Face</span> for embodied AI
+          </Item>
+          <Item as="p" className="section-sub">
+            Hardware raced ahead; software never caught up. Humanoid Network is
+            the connective tissue — standardizing motion, control and
+            intelligence so any developer can build, deploy and monetize skills
+            across any robot.
+          </Item>
+        </Group>
+      </div>
+
+      <Group className="bento" amount={0.1}>
+        <Item className="card feature-lg">
+          <div className="ic">
+            <DatabaseScript width={26} height={26} />
+          </div>
+          <div className="big-word">Motion data marketplace</div>
+          <p>
+            Contributors upload task videos, interaction episodes and
+            robot-ready skill artifacts. Every dataset is verified, licensable
+            and streamable to enterprises training Physical AI models.
           </p>
-          <div className="divider" />
-        </div>
-      </section>
+        </Item>
 
-      <div className="features">
-        {features.map((f) => (
-          <div className="feature" key={f.label}>
-            {f.icon}
-            <span>{f.label}</span>
+        <Item className="card span3">
+          <div className="ic">
+            <ShieldCheck width={26} height={26} />
           </div>
-        ))}
-      </div>
+          <h3>Hydra physics validation</h3>
+          <p>
+            Each motion is replayed against real physics before it counts —
+            no hallucinated data, only trajectories that hold up in the world.
+          </p>
+        </Item>
 
-      <div className="slogan">
-        <span className="w">ASK.</span> <span className="g">CREATE.</span>{" "}
-        <span className="w">ACHIEVE.</span> <span className="g">WITHOUT LIMITS.</span>
-      </div>
-    </>
+        <Item className="card span3">
+          <div className="ic">
+            <Cpu width={26} height={26} />
+          </div>
+          <h3>Universal developer layer</h3>
+          <p>
+            Standardized interfaces for motion, control and intelligence — the
+            same skill runs across different robotic systems, like Android for
+            embodiment.
+          </p>
+        </Item>
+
+        <Item className="card span2">
+          <div className="ic">
+            <Packages width={26} height={26} />
+          </div>
+          <h3>Skill artifacts</h3>
+          <p>Package a capability once, distribute it everywhere.</p>
+        </Item>
+
+        <Item className="card span2">
+          <div className="ic">
+            <Cloud width={26} height={26} />
+          </div>
+          <h3>Streaming subscriptions</h3>
+          <p>Fresh verified data, delivered continuously to model teams.</p>
+        </Item>
+
+        <Item className="card span2">
+          <div className="ic">
+            <Building width={26} height={26} />
+          </div>
+          <h3>Enterprise deployment</h3>
+          <p>Private dataset pilots and benchmark regressions at scale.</p>
+        </Item>
+      </Group>
+    </section>
   );
 }
 
-function ImageTab() {
-  const [prompt, setPrompt] = useState("");
-  const [ratio, setRatio] = useState<Ratio>("square");
-  const [loading, setLoading] = useState(false);
-  const [imgUrl, setImgUrl] = useState("");
-  const [error, setError] = useState("");
-  const [refFile, setRefFile] = useState<Blob | null>(null);
-  const [refPreview, setRefPreview] = useState("");
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const editorRef = useRef<HTMLDivElement>(null);
-  const counter = useDailyCounter("image", IMAGE_LIMIT);
-  const credits = useCredits();
-  const effectiveRemaining = counter.remaining + credits.credits;
+const POINTS = [
+  { Icon: Twitter, t: "Connect X", d: "Link your account", p: "+30" },
+  { Icon: Telegram, t: "Join Telegram", d: "Enter the community", p: "+25" },
+  { Icon: Discord, t: "Join Discord", d: "Say hello in chat", p: "+25" },
+  { Icon: DatabaseScript, t: "Upload a model", d: "HuggingFace · max 3/day", p: "+12" },
+  { Icon: Database, t: "Upload a dataset", d: "HuggingFace · max 3/day", p: "+15" },
+  { Icon: GroupIcon, t: "Refer a friend", d: "Best rate on the board", p: "+150" },
+  { Icon: Flash, t: "Daily streak", d: "Log in, keep the combo", p: "+∞" },
+  { Icon: Medal, t: "Climb the leaderboard", d: "Consistency compounds", p: "★" },
+];
 
-  // Consume one generation: use a daily slot first, then a tapped bonus credit.
-  function consumeOne() {
-    if (counter.remaining > 0) counter.bump();
-    else credits.spendCredit();
-  }
-
-  // Shrink the image in the browser before uploading: keeps the payload small
-  // and the vision analysis fast.
-  async function downscaleImage(file: File, maxDim = 480): Promise<Blob> {
-    const bitmap = await createImageBitmap(file);
-    const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
-    const w = Math.max(1, Math.round(bitmap.width * scale));
-    const h = Math.max(1, Math.round(bitmap.height * scale));
-    const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("no canvas context");
-    ctx.drawImage(bitmap, 0, 0, w, h);
-    bitmap.close?.();
-    return await new Promise<Blob>((resolve, reject) =>
-      canvas.toBlob(
-        (b) => (b ? resolve(b) : reject(new Error("toBlob failed"))),
-        "image/jpeg",
-        0.85
-      )
-    );
-  }
-
-  async function onPickReference(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setError("The file must be an image.");
-      return;
-    }
-    if (file.size > 8_000_000) {
-      setError("The reference image is too large (max 8 MB).");
-      return;
-    }
-    setError("");
-    let blob: Blob = file;
-    try {
-      blob = await downscaleImage(file);
-    } catch {
-      // If canvas processing fails, fall back to the original file.
-    }
-    if (refPreview) URL.revokeObjectURL(refPreview);
-    setRefFile(blob);
-    setRefPreview(URL.createObjectURL(blob));
-  }
-
-  function clearReference() {
-    setRefFile(null);
-    if (refPreview) URL.revokeObjectURL(refPreview);
-    setRefPreview("");
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  }
-
-  // Carga la imagen de un token (memecoin) como imagen de referencia del editor.
-  async function loadReferenceFromUrl(imageUrl: string) {
-    setError("");
-    try {
-      const res = await fetch(`/api/token-image?url=${encodeURIComponent(imageUrl)}`);
-      if (!res.ok) throw new Error("img");
-      const raw = await res.blob();
-      const file = new File([raw], "token.png", { type: raw.type || "image/png" });
-      let blob: Blob = file;
-      try {
-        blob = await downscaleImage(file);
-      } catch {
-        // usa el original si el canvas falla
-      }
-      if (refPreview) URL.revokeObjectURL(refPreview);
-      setRefFile(blob);
-      setRefPreview(URL.createObjectURL(blob));
-      editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    } catch {
-      setError("Couldn't load the token image. Try another one.");
-    }
-  }
-
-  async function generate() {
-    const text = prompt.trim();
-    if (!text || loading) return;
-    if (effectiveRemaining <= 0) {
-      setError("You've reached your daily limit. Tap the coin below to earn more.");
-      return;
-    }
-    setError("");
-    setLoading(true);
-    setImgUrl("");
-    try {
-      let res: Response;
-      if (refFile) {
-        // Reference image → send as multipart so the server can host it and
-        // run image-to-image (kontext) on Pollinations.
-        const form = new FormData();
-        form.append("prompt", text);
-        form.append("ratio", ratio);
-        form.append("image", refFile, "reference.jpg");
-        res = await fetch("/api/image", { method: "POST", body: form });
-      } else {
-        res = await fetch("/api/image", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt: text, ratio }),
-        });
-      }
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setError(data.error || "Something went wrong.");
-        setLoading(false);
-        return;
-      }
-      const ct = res.headers.get("content-type") || "";
-      if (ct.startsWith("image/")) {
-        // Real edited image returned directly as bytes (kontext).
-        const blob = await res.blob();
-        const objUrl = URL.createObjectURL(blob);
-        setImgUrl((prev) => {
-          if (prev.startsWith("blob:")) URL.revokeObjectURL(prev);
-          return objUrl;
-        });
-        consumeOne();
-        setLoading(false);
-        return;
-      }
-      const data = await res.json();
-      // Preload the image URL so we only stop the spinner when it's ready.
-      const im = new window.Image();
-      im.onload = () => {
-        setImgUrl(data.url);
-        consumeOne();
-        setLoading(false);
-      };
-      im.onerror = () => {
-        setError("Couldn't generate the image. Try another description.");
-        setLoading(false);
-      };
-      im.src = data.url;
-    } catch {
-      setError("Network error. Check your connection.");
-      setLoading(false);
-    }
-  }
-
-  const ratios: { key: Ratio; label: string }[] = [
-    { key: "square", label: "1:1" },
-    { key: "landscape", label: "16:9" },
-    { key: "portrait", label: "9:16" },
-  ];
-
+function Points() {
   return (
-    <>
-    <div className="section-head">
-      <IconImage size={22} />
-      <h2>AI Image Studio</h2>
-      <span className="sub">generate &amp; edit</span>
-    </div>
-    <div className="panel" ref={editorRef}>
-      <div className="limit-pill">
-        <IconImage size={15} /> Images today: <b>{counter.remaining}</b> / {IMAGE_LIMIT} left
-        {credits.credits > 0 && (
-          <span className="bonus-pill">
-            <IconBolt size={13} /> +{credits.credits} earned
-          </span>
-        )}
+    <section className="block wrap" id="points">
+      <div className="block-head center">
+        <Group>
+          <Item as="span" className="eyebrow">
+            <span className="spark" /> Season 1 · farm now
+          </Item>
+          <Item as="h2" className="section-title">
+            Earn points today, <br />
+            <span className="grad-text">claim HAN at TGE</span>
+          </Item>
+          <Item as="p" className="section-sub">
+            The Pre-Launch app runs until the Q1 2026 Token Generation Event.
+            Points convert to HAN allocations — consistent contributors take the
+            leaderboard.
+          </Item>
+        </Group>
       </div>
 
-      <div className="ref-row">
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          onChange={onPickReference}
-          disabled={loading}
-          style={{ display: "none" }}
-        />
-        {refPreview ? (
-          <div className="ref-preview">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={refPreview} alt="Imagen de referencia" />
-            <button
-              type="button"
-              className="ref-remove"
-              onClick={clearReference}
-              disabled={loading}
-              aria-label="Quitar imagen de referencia"
-            >
-              ×
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            className="ref-upload"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={loading}
-          >
-            <IconUpload size={16} /> Upload a reference image (optional)
-          </button>
-        )}
-      </div>
-
-      <input
-        type="text"
-        value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && generate()}
-        placeholder={
-          refFile
-            ? "Describe how to transform your image (e.g. watercolor style, neon background)..."
-            : "A neon astronaut riding a motorcycle on Mars, cyberpunk style..."
-        }
-        disabled={loading}
-      />
-      <div className="img-controls">
-        <div className="ratio-group">
-          {ratios.map((r) => (
-            <button
-              key={r.key}
-              className={`ratio-btn ${ratio === r.key ? "active" : ""}`}
-              onClick={() => setRatio(r.key)}
-              disabled={loading}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
-        <button
-          className="btn"
-          style={{ minHeight: 44 }}
-          onClick={generate}
-          disabled={loading || !prompt.trim()}
-        >
-          {loading ? "Generating..." : refFile ? "Transform image" : "Generate image"}
-        </button>
-      </div>
-      {error && <div className="error">{error}</div>}
-      <div className="image-stage">
-        {loading ? (
-          <div style={{ textAlign: "center" }}>
-            <div className="spinner" style={{ margin: "0 auto 14px" }} />
-            <div style={{ color: "var(--text-dim)" }}>
-              Creating your image<span className="dots" />
-            </div>
-          </div>
-        ) : imgUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={imgUrl} alt={prompt} />
-        ) : (
-          <div className="stage-hint">
-            Describe an image and hit <b>Generate</b>
-          </div>
-        )}
-      </div>
-      {imgUrl && !loading && (
-        <a className="download" href={imgUrl} target="_blank" rel="noreferrer" download>
-          <IconDownload size={15} /> Open / download image
-        </a>
-      )}
-    </div>
-    <TokenFeed onUse={loadReferenceFromUrl} />
-    </>
-  );
-}
-
-type TokenInfo = {
-  name: string;
-  symbol: string;
-  imageUrl: string;
-  address?: string;
-  banner?: boolean;
-  priceUsd: string | null;
-  change24h: number | null;
-  createdAt: string | null;
-  url: string;
-};
-
-function tokenImg(url: string) {
-  return `/api/token-image?url=${encodeURIComponent(url)}`;
-}
-
-// Genera un "jazzicon" SVG determinista (estilo MetaMask: color base + formas
-// giradas de colores) para tokens sin logo. Se ve como un icono real.
-function identiconUri(seed: string): string {
-  let s = 2166136261;
-  for (let i = 0; i < seed.length; i++) {
-    s ^= seed.charCodeAt(i);
-    s = Math.imul(s, 16777619) >>> 0;
-  }
-  const rnd = () => {
-    s = (Math.imul(s, 1103515245) + 12345) >>> 0;
-    return s / 0xffffffff;
-  };
-  const baseHue = Math.floor(rnd() * 360);
-  const bg = `hsl(${baseHue} 68% 52%)`;
-  let shapes = "";
-  for (let i = 0; i < 4; i++) {
-    const hue = (baseHue + Math.floor((rnd() * 2 - 1) * 150) + 360) % 360;
-    const col = `hsl(${hue} 72% ${44 + Math.floor(rnd() * 22)}%)`;
-    const tx = Math.floor((rnd() * 2 - 1) * 60);
-    const ty = Math.floor((rnd() * 2 - 1) * 60);
-    const rot = Math.floor(rnd() * 360);
-    shapes += `<rect x='-16' y='-16' width='96' height='96' fill='${col}' transform='translate(${tx} ${ty}) rotate(${rot} 32 32)'/>`;
-  }
-  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><rect width='64' height='64' fill='${bg}'/>${shapes}</svg>`;
-  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
-}
-
-// Muestra la imagen del token y, si falla la carga, cae a un avatar de letras.
-function TokenMedia({
-  token,
-  onUse,
-  big,
-}: {
-  token: TokenInfo;
-  onUse: (imageUrl: string) => void;
-  big?: boolean;
-}) {
-  const [broken, setBroken] = useState(false);
-  useEffect(() => {
-    setBroken(false);
-  }, [token.imageUrl]);
-
-  if (!token.imageUrl || broken) {
-    const seed = token.address || `${token.symbol}${token.name}`;
-    return (
-      <div
-        className={`token-avatar${big ? " big" : ""}`}
-        style={{
-          backgroundImage: `url("${identiconUri(seed)}")`,
-          backgroundSize: "cover",
-        }}
-        aria-label={token.name}
-      />
-    );
-  }
-  return (
-    <>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        className={token.banner ? "tok-banner" : undefined}
-        src={tokenImg(token.imageUrl)}
-        alt={token.name}
-        onError={() => setBroken(true)}
-      />
-      {!big && (
-        <button
-          className="token-usebtn"
-          onClick={() => onUse(token.imageUrl)}
-          title="Load into editor"
-          aria-label={`Edit ${token.symbol || token.name}`}
-        >
-          <IconEdit size={14} />
-        </button>
-      )}
-    </>
-  );
-}
-
-function TokenFeed({ onUse }: { onUse: (imageUrl: string) => void }) {
-  const [mode, setMode] = useState<"trending" | "new">("trending");
-  const [win, setWin] = useState<"1h" | "6h" | "24h">("24h");
-  const [tokens, setTokens] = useState<TokenInfo[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    let alive = true;
-    async function load() {
-      setLoading(true);
-      try {
-        const qs = mode === "new" ? `mode=new&window=${win}` : "mode=trending";
-        const res = await fetch(`/api/tokens?${qs}`);
-        const data = await res.json();
-        if (!alive) return;
-        if (!res.ok) {
-          setError(data.error || "No se pudieron cargar los tokens.");
-          setTokens([]);
-        } else {
-          setError("");
-          setTokens(data.tokens || []);
-        }
-      } catch {
-        if (alive) setError("Error de red al cargar tokens.");
-      } finally {
-        if (alive) setLoading(false);
-      }
-    }
-    load();
-    const id = setInterval(load, 30000); // refresco en tiempo real
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, [mode, win]);
-
-  const filters: { key: string; label: string }[] = [
-    { key: "trending", label: "Trending" },
-    { key: "1h", label: "1h" },
-    { key: "6h", label: "6h" },
-    { key: "24h", label: "24h" },
-  ];
-  const active = mode === "trending" ? "trending" : win;
-  function selectFilter(k: string) {
-    if (k === "trending") setMode("trending");
-    else {
-      setMode("new");
-      setWin(k as "1h" | "6h" | "24h");
-    }
-  }
-
-  // El destacado (card grande) prefiere un token con logo real para que el
-  // héroe nunca salga con el avatar de colores; si ninguno tiene, usa el primero.
-  const featuredIdx = tokens.findIndex((t) => t.imageUrl);
-  const heroIdx = featuredIdx >= 0 ? featuredIdx : 0;
-  const featured = tokens[heroIdx];
-  const rest = tokens.filter((_, i) => i !== heroIdx);
-
-  return (
-    <div className="token-feed">
-      <div className="token-head">
-        <h2>
-          <IconFlame size={18} /> Hood Trending
-        </h2>
-        <span className="token-sub">Live memecoins · tap to edit</span>
-      </div>
-
-      <div className="token-filters">
-        {filters.map((f) => (
-          <button
-            key={f.key}
-            className={`token-filter ${active === f.key ? "active" : ""}`}
-            onClick={() => selectFilter(f.key)}
-          >
-            {f.key === "trending" && <IconFlame size={14} />}
-            {f.label}
-          </button>
-        ))}
-      </div>
-
-      {error && <div className="error">{error}</div>}
-      {loading && tokens.length === 0 && (
-        <div className="token-loading">
-          <div className="spinner" />
-        </div>
-      )}
-      {!loading && !error && tokens.length === 0 && (
-        <div className="stage-hint">No tokens in this window.</div>
-      )}
-
-      {featured && (
-        <div className="token-featured">
-          <TokenMedia token={featured} onUse={onUse} big />
-          <div className="token-featured-info">
-            <div className="token-name">
-              {featured.name} <span>{featured.symbol}</span>
-            </div>
-            {featured.priceUsd && (
-              <div className="token-price">
-                ${Number(featured.priceUsd).toPrecision(4)}
-                {featured.change24h != null && (
-                  <span className={featured.change24h >= 0 ? "up" : "down"}>
-                    {featured.change24h >= 0 ? " ▲" : " ▼"}
-                    {Math.abs(featured.change24h).toFixed(1)}%
-                  </span>
-                )}
+      <Group className="points" amount={0.15}>
+        {POINTS.map((x, i) => (
+          <Item className="point-card" key={i}>
+            <div className="phead">
+              <div className="pic">
+                <x.Icon width={22} height={22} />
               </div>
-            )}
-            {featured.imageUrl && (
-              <button className="btn token-use" onClick={() => onUse(featured.imageUrl)}>
-                <IconEdit size={15} /> Edit this image
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {rest.length > 0 && (
-        <div className="token-grid">
-          {rest.map((t, i) => (
-            <div className="token-card" key={`${t.symbol}-${i}`}>
-              <div className="token-thumb">
-                <TokenMedia token={t} onUse={onUse} />
-              </div>
-              <div className="token-card-name">{t.symbol || t.name}</div>
+              <span className="pts">{x.p}</span>
             </div>
-          ))}
-        </div>
-      )}
-    </div>
+            <h4>{x.t}</h4>
+            <p>{x.d}</p>
+          </Item>
+        ))}
+      </Group>
+    </section>
   );
 }
 
-// ---------- Tap to Earn ----------
-// A round logo coin at the bottom: every TAPS_PER_POINT taps grants a bonus
-// image credit that the studio above can spend once the daily limit is used up.
-function TapToEarn() {
-  const credits = useCredits();
-  const [pop, setPop] = useState(false);
-  const [flash, setFlash] = useState(false);
+const HYDRA_ITEMS = [
+  {
+    Icon: Activity,
+    t: "Replay against real physics",
+    d: "Every submitted trajectory is simulated on the Hydra stack before it can be licensed.",
+  },
+  {
+    Icon: GraphUp,
+    t: "Benchmark regressions",
+    d: "Skills are scored continuously so quality only moves in one direction.",
+  },
+  {
+    Icon: Atom,
+    t: "Verified, licensable data",
+    d: "Only motions that survive validation enter the marketplace and earn rewards.",
+  },
+];
 
-  const R = 54;
-  const CIRC = 2 * Math.PI * R;
-  const offset = CIRC * (1 - credits.taps / TAPS_PER_POINT);
-
-  function onTap() {
-    const earned = credits.addTap();
-    setPop(true);
-    setTimeout(() => setPop(false), 130);
-    if (earned) {
-      setFlash(true);
-      setTimeout(() => setFlash(false), 900);
-    }
-  }
-
+function Technology() {
   return (
-    <div className="tap-section">
-      <div className="section-head">
-        <IconBolt size={22} />
-        <h2>Tap to Earn</h2>
-        <span className="sub">free image credits</span>
-      </div>
-      <div className="tap-card">
-        <button
-          type="button"
-          className={`coin${pop ? " pop" : ""}${flash ? " flash" : ""}`}
-          onClick={onTap}
-          aria-label="Tap the coin to earn image credits"
+    <section className="block wrap" id="technology">
+      <div className="tech">
+        <Group>
+          <Item as="span" className="eyebrow">
+            <span className="spark" /> Technology
+          </Item>
+          <Item as="h2" className="section-title">
+            Validated by physics,<br />not vibes.
+          </Item>
+          <Item as="p" className="section-sub">
+            The Hydra validation stack is what makes Humanoid Network data
+            trustworthy — a physics engine that separates motion that works from
+            motion that merely looks right.
+          </Item>
+          <div className="tech-list">
+            {HYDRA_ITEMS.map((x, i) => (
+              <Item className="tech-item" key={i}>
+                <div className="tic">
+                  <x.Icon width={17} height={17} />
+                </div>
+                <div>
+                  <h4>{x.t}</h4>
+                  <p>{x.d}</p>
+                </div>
+              </Item>
+            ))}
+          </div>
+        </Group>
+
+        <motion.div
+          className="hydra"
+          initial={{ opacity: 0, scale: 0.9 }}
+          whileInView={{ opacity: 1, scale: 1 }}
+          viewport={{ once: true, amount: 0.4 }}
+          transition={{ duration: 0.8, ease: easeOut }}
         >
-          <svg className="coin-ring" viewBox="0 0 120 120" aria-hidden>
-            <circle className="track" cx="60" cy="60" r={R} />
-            <circle
-              className="prog"
-              cx="60"
-              cy="60"
-              r={R}
-              style={{ strokeDasharray: CIRC, strokeDashoffset: offset }}
-            />
-          </svg>
-          <span className="coin-face">
-            <Logo className="coin-logo" />
-          </span>
-        </button>
-        <div className="tap-info">
-          <div className="tap-count">
-            {credits.taps} <span>/ {TAPS_PER_POINT} taps</span>
+          <span className="pulse" style={{ animationDelay: "0s" }} />
+          <span className="pulse" style={{ animationDelay: "1.1s" }} />
+          <span className="pulse" style={{ animationDelay: "2.2s" }} />
+          <div className="hcore">
+            <div className="hn">HYDRA</div>
+            <div className="hl">validation stack</div>
           </div>
-          <div className="tap-earned">
-            <IconBolt size={15} /> <b>{credits.credits}</b> image credits earned
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+const PHASES = [
+  {
+    tag: "Months 0–3",
+    n: "01",
+    live: true,
+    t: "Capture",
+    items: ["MVP capture", "Missions & tasks", "Basic verification"],
+  },
+  {
+    tag: "Months 3–6",
+    n: "02",
+    t: "Pilots",
+    items: ["Private dataset pilots", "Benchmark regressions"],
+  },
+  {
+    tag: "Months 6–12",
+    n: "03",
+    t: "Scale",
+    items: ["Streaming subscriptions", "Enterprise deployments", "Scaling supply"],
+  },
+  {
+    tag: "Months 12+",
+    n: "04",
+    t: "Distribute",
+    items: ["Standardized skill artifacts", "Developer distribution"],
+  },
+];
+
+function Roadmap() {
+  return (
+    <section className="block wrap" id="roadmap">
+      <div className="block-head">
+        <Group>
+          <Item as="span" className="eyebrow">
+            <span className="spark" /> Roadmap
+          </Item>
+          <Item as="h2" className="section-title">
+            From capture to a global{" "}
+            <span className="grad-text">skill economy</span>
+          </Item>
+        </Group>
+      </div>
+      <Group className="roadmap" amount={0.15}>
+        {PHASES.map((p, i) => (
+          <Item className={`phase${p.live ? " live" : ""}`} key={i}>
+            <span className="pdot" />
+            <div className="ptag">{p.tag}</div>
+            <div className="pnum">{p.n}</div>
+            <h4>{p.t}</h4>
+            <ul>
+              {p.items.map((it) => (
+                <li key={it}>
+                  <CheckCircle width={16} height={16} /> {it}
+                </li>
+              ))}
+            </ul>
+          </Item>
+        ))}
+      </Group>
+    </section>
+  );
+}
+
+const TEAM = [
+  { n: "Robert Vukosa", r: "CEO" },
+  { n: "Noshaba Cheema", r: "CTO" },
+  { n: "Marnik Battryn", r: "COO" },
+  { n: "Imogen Green", r: "CMO" },
+  { n: "Dylan Lee", r: "Head of Ecosystem" },
+];
+const ADVISORS = [
+  ["Mamoon Khalid", "AI / robotics strategy"],
+  ["David Lake", "Decentralized AI"],
+  ["Mark DeSantis", "Deep-tech scaling"],
+  ["Youngsook Park", "Robotics partnerships"],
+];
+
+function initials(name: string) {
+  return name
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2);
+}
+
+function Team() {
+  return (
+    <section className="block wrap" id="team">
+      <div className="block-head center">
+        <Group>
+          <Item as="span" className="eyebrow">
+            <span className="spark" /> Builders
+          </Item>
+          <Item as="h2" className="section-title">
+            The team behind the network
+          </Item>
+        </Group>
+      </div>
+      <Group className="team-grid" amount={0.15}>
+        {TEAM.map((m) => (
+          <Item className="member" key={m.n}>
+            <div className="ava">{initials(m.n)}</div>
+            <div className="mn">{m.n}</div>
+            <div className="mr">{m.r}</div>
+          </Item>
+        ))}
+      </Group>
+      <Group className="advisors" amount={0.2}>
+        {ADVISORS.map(([n, r]) => (
+          <Item as="span" className="advisor" key={n}>
+            <b>{n}</b> · {r}
+          </Item>
+        ))}
+      </Group>
+    </section>
+  );
+}
+
+const TOKEN_FACTS = [
+  { n: "HAN", l: "Ticker" },
+  { n: "Utility", l: "Token type" },
+  { n: "Q1 2026", l: "Generation event" },
+  { n: "Points", l: "Convert at TGE" },
+];
+
+function TokenBand() {
+  return (
+    <section className="block wrap">
+      <div className="token-band">
+        <Group>
+          <Item as="span" className="eyebrow" >
+            <span className="spark" /> The HAN token
+          </Item>
+          <Item as="h2" className="section-title">
+            Own a piece of the robotics operating layer
+          </Item>
+          <Item as="p" className="section-sub">
+            HAN is the utility token that coordinates data, validation and
+            rewards across the network. Points farmed today convert to HAN
+            allocations at the Token Generation Event.
+          </Item>
+          <Item className="hero-actions">
+            <a className="btn btn-primary" href="#points">
+              <Coins width={18} height={18} /> Farm points now
+            </a>
+          </Item>
+        </Group>
+        <Group className="token-facts" amount={0.3}>
+          {TOKEN_FACTS.map((t) => (
+            <Item className="tf" key={t.l}>
+              <div className="tfn">{t.n}</div>
+              <div className="tfl">{t.l}</div>
+            </Item>
+          ))}
+        </Group>
+      </div>
+    </section>
+  );
+}
+
+function CTA() {
+  return (
+    <section className="cta wrap">
+      <Group>
+        <Item as="h2">
+          Any robot. Any task.
+          <br />
+          <span className="grad-text">One network.</span>
+        </Item>
+        <Item as="p">
+          Start farming points for the HAN airdrop and help build the software
+          layer for the entire robotics industry.
+        </Item>
+        <Item className="cta-actions">
+          <a className="btn btn-primary" href="#points">
+            <Rocket width={18} height={18} /> Launch the app
+          </a>
+          <a className="btn btn-dark" href="#technology">
+            Read the docs <ArrowUpRight width={17} height={17} />
+          </a>
+        </Item>
+      </Group>
+    </section>
+  );
+}
+
+const SOCIALS = [
+  { Icon: Twitter, href: "https://x.com/HumanoidNetwork" },
+  { Icon: Discord, href: "#" },
+  { Icon: Telegram, href: "#" },
+  { Icon: Youtube, href: "#" },
+  { Icon: Instagram, href: "#" },
+  { Icon: Linkedin, href: "#" },
+];
+
+function Footer() {
+  return (
+    <footer className="footer">
+      <div className="wrap">
+        <div className="footer-inner">
+          <div className="fabout">
+            <a className="brand" href="#top">
+              <LogoMark />
+              <span className="bname">
+                Humanoid<b>Network</b>
+              </span>
+            </a>
+            <p>
+              Any Robot. Any Task. One Network. Building the open robotics data
+              and skill hub for the age of embodied AI.
+            </p>
+            <div className="socials">
+              {SOCIALS.map(({ Icon, href }, i) => (
+                <a key={i} href={href} aria-label="social" target="_blank" rel="noreferrer">
+                  <Icon width={20} height={20} />
+                </a>
+              ))}
+            </div>
           </div>
-          <div className="tap-hint">
-            Every {TAPS_PER_POINT} taps = <b>1 free image</b>. Tap the coin!
+          <div className="fcol">
+            <h5>Network</h5>
+            <a href="#product">Product</a>
+            <a href="#technology">Technology</a>
+            <a href="#points">Points</a>
+            <a href="#roadmap">Roadmap</a>
           </div>
-          {flash && <div className="tap-flash">+1 credit!</div>}
+          <div className="fcol">
+            <h5>Token</h5>
+            <a href="#points">Airdrop</a>
+            <a href="#team">Team</a>
+            <a href="#top">Tokenomics</a>
+            <a href="#points">Leaderboard</a>
+          </div>
+          <div className="fcol">
+            <h5>Resources</h5>
+            <a href="#">Docs</a>
+            <a href="#">FAQ</a>
+            <a href="#">Brand</a>
+            <a href="#">Contact</a>
+          </div>
+        </div>
+        <div className="foot-legal">
+          <span>© 2026 Humanoid Network. All rights reserved.</span>
+          <span>HAN · Pre-TGE · Season 1</span>
         </div>
       </div>
-    </div>
+    </footer>
   );
 }
 
 export default function Page() {
   return (
     <>
-      <BgFX />
-      <Topbar />
-      <div className="app">
+      <Cursor />
+      <Background />
+      <Nav />
+      <main>
         <Hero />
-        <ImageTab />
-        <TapToEarn />
-        <div className="footer">
-          AgentHood · AI image generator · daily limits
-          <br />
-          Use responsibly — don&apos;t generate harmful or illegal content.
-        </div>
-      </div>
+        <Stats />
+        <Marquee />
+        <Features />
+        <Points />
+        <Technology />
+        <Roadmap />
+        <Team />
+        <TokenBand />
+        <CTA />
+      </main>
+      <Footer />
     </>
   );
 }
