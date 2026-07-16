@@ -1,16 +1,25 @@
 import type { Metadata } from "next";
+import { Space_Grotesk } from "next/font/google";
 import "./globals.css";
 
+const display = Space_Grotesk({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-display",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
-  title: "AgentHood — Generate images with AI",
+  title: "Humanoid Network — Any Robot. Any Task. One Network.",
   description:
-    "AgentHood: free AI image generator. Describe what you imagine and create images instantly. Fast, free and hassle-free.",
+    "Humanoid Network (HAN) is the open robotics data and skill hub — a physics-validated motion marketplace powering the next generation of embodied AI. Farm points now ahead of the Q1 2026 TGE.",
   icons: {
     icon: "/favicon.svg",
   },
   openGraph: {
-    title: "AgentHood — Generate images with AI",
-    description: "AI image generation, free.",
+    title: "Humanoid Network — Any Robot. Any Task. One Network.",
+    description:
+      "The Hugging Face for embodied AI. Physics-validated motion data for the global robotics industry.",
     type: "website",
   },
 };
@@ -21,7 +30,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className={display.variable}>
       <body>{children}</body>
     </html>
   );
