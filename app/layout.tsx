@@ -2,15 +2,15 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AgentHood — Generate images with AI",
+  title: "StockSprout — Open. Own. Invest.",
   description:
-    "AgentHood: free AI image generator. Describe what you imagine and create images instantly. Fast, free and hassle-free.",
+    "StockSprout: open curated packs of real tokenized stocks on Robinhood Chain. Provably-fair reveals, Uniswap v4 settlement, self-custody.",
   icons: {
     icon: "/favicon.svg",
   },
   openGraph: {
-    title: "AgentHood — Generate images with AI",
-    description: "AI image generation, free.",
+    title: "StockSprout — Open. Own. Invest.",
+    description: "Curated packs of real tokenized stocks, settled on-chain.",
     type: "website",
   },
 };
