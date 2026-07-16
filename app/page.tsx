@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { animate, scroll } from "motion";
+import Globe from "./globe";
 import {
   Scanning,
   ScanQrCode,
@@ -27,6 +29,11 @@ import {
   Github,
   Sparks,
   Flash,
+  Timer,
+  Filter,
+  Wifi,
+  Globe as GlobeIcon,
+  MouseScrollWheel,
 } from "iconoir-react";
 
 /* ------------------------------------------------------------------ *
@@ -419,6 +426,7 @@ function Stats() {
       <div className="section-head">
         <div>
           <Item className="eyebrow" variants={fadeUp}>
+            <Network width={15} height={15} />
             <span className="num">01</span> The read
           </Item>
           <motion.h2 variants={fadeUp} style={{ margin: 0 }}>
@@ -432,6 +440,9 @@ function Stats() {
       </div>
       <Item className="stats" variants={fadeUp}>
         <div className="stat">
+          <div className="stat-ic">
+            <Network width={20} height={20} />
+          </div>
           <div className="big">
             <CountUp to={4663} />
           </div>
@@ -439,6 +450,9 @@ function Stats() {
           <div className="sub">network id</div>
         </div>
         <div className="stat">
+          <div className="stat-ic">
+            <Timer width={20} height={20} />
+          </div>
           <div className="big">
             <CountUp to={20} />
             <span className="u">sec</span>
@@ -447,6 +461,9 @@ function Stats() {
           <div className="sub">visitor-assisted</div>
         </div>
         <div className="stat">
+          <div className="stat-ic">
+            <Filter width={20} height={20} />
+          </div>
           <div className="big">
             ≥<CountUp to={0.0005} decimals={4} />
           </div>
@@ -454,6 +471,9 @@ function Stats() {
           <div className="sub">weth / swap</div>
         </div>
         <div className="stat">
+          <div className="stat-ic">
+            <Wifi width={20} height={20} />
+          </div>
           <div className="big">
             <CountUp to={100} suffix="%" />
           </div>
@@ -534,49 +554,135 @@ const MODULES = [
   },
 ];
 
+function spotlight(e: React.MouseEvent<HTMLElement>) {
+  const el = e.currentTarget;
+  const r = el.getBoundingClientRect();
+  el.style.setProperty("--lx", `${e.clientX - r.left}px`);
+  el.style.setProperty("--ly", `${e.clientY - r.top}px`);
+}
+
+function ModuleInner({ m }: { m: (typeof MODULES)[number] }) {
+  return (
+    <>
+      <div className="mnum">{m.n}</div>
+      <div className="micon">
+        <m.Icon width={28} height={28} />
+      </div>
+      <h3>{m.title}</h3>
+      <p>{m.body}</p>
+      <span className="tag">
+        <span className="pulse-dot" /> {m.tag}
+      </span>
+    </>
+  );
+}
+
+// Grid fallback (mobile + reduced motion).
+function ModulesGrid() {
+  return (
+    <Reveal className="modules" as="div">
+      {MODULES.map((m) => (
+        <Item key={m.n} className="module" variants={fadeUp} onMouseMove={spotlight}>
+          <ModuleInner m={m} />
+        </Item>
+      ))}
+    </Reveal>
+  );
+}
+
+// Pinned horizontal carousel — ui-layouts approach (motion `animate` + `scroll`).
+function ModulesHorizontal() {
+  const sectionRef = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLUListElement>(null);
+
+  useEffect(() => {
+    const section = sectionRef.current;
+    const track = trackRef.current;
+    if (!section || !track) return;
+    let controls: { stop: () => void } | null = null;
+
+    const setup = () => {
+      track.style.transform = "translateX(0px)";
+      const distance = Math.max(0, track.scrollWidth - window.innerWidth + 96);
+      section.style.height = `${distance + window.innerHeight}px`;
+      controls = animate(
+        track,
+        { transform: ["translateX(0px)", `translateX(-${distance}px)`] },
+        { ease: "linear" }
+      ) as unknown as { stop: () => void };
+      scroll(controls as never, { target: section });
+    };
+    setup();
+
+    let t: ReturnType<typeof setTimeout>;
+    const onResize = () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        controls?.stop();
+        setup();
+      }, 200);
+    };
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      clearTimeout(t);
+      controls?.stop();
+    };
+  }, []);
+
+  return (
+    <div className="mods-h" ref={sectionRef}>
+      <div className="mods-h-sticky">
+        <div className="mods-h-hint">
+          <MouseScrollWheel width={16} height={16} /> scroll to pan the nine
+        </div>
+        <ul className="mods-h-track" ref={trackRef}>
+          {MODULES.map((m) => (
+            <li key={m.n} className="module hcard" onMouseMove={spotlight}>
+              <ModuleInner m={m} />
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+function ModulesShowcase() {
+  const [mode, setMode] = useState<"grid" | "horizontal">("grid");
+  const reduce = useReducedMotion();
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 960px)");
+    const decide = () => setMode(mq.matches && !reduce ? "horizontal" : "grid");
+    decide();
+    mq.addEventListener("change", decide);
+    return () => mq.removeEventListener("change", decide);
+  }, [reduce]);
+  return mode === "horizontal" ? <ModulesHorizontal /> : <ModulesGrid />;
+}
+
 function Modules() {
   return (
-    <Reveal className="section" as="section">
-      <div className="section-head">
-        <div>
-          <Item className="eyebrow" variants={fadeUp}>
-            <span className="num">02</span> Nine instruments
+    <section className="section" id="modules">
+      <Reveal as="div">
+        <div className="section-head">
+          <div>
+            <Item className="eyebrow" variants={fadeUp}>
+              <StatsUpSquare width={15} height={15} />
+              <span className="num">02</span> Nine instruments
+            </Item>
+            <motion.h2 variants={fadeUp} style={{ margin: 0 }}>
+              One terminal, nine ways to <em>read a launch.</em>
+            </motion.h2>
+          </div>
+          <Item className="aside" variants={fadeUp}>
+            Each panel answers a different question about a token — from the first
+            factory event to the freshest decoded swap.
           </Item>
-          <motion.h2 variants={fadeUp} style={{ margin: 0 }}>
-            One terminal, nine ways to <em>read a launch.</em>
-          </motion.h2>
         </div>
-        <Item className="aside" variants={fadeUp}>
-          Each panel answers a different question about a token — from the first
-          factory event to the freshest decoded swap.
-        </Item>
-      </div>
-      <div className="modules">
-        {MODULES.map((m) => (
-          <Item
-            key={m.n}
-            className="module"
-            variants={fadeUp}
-            onMouseMove={(e) => {
-              const el = e.currentTarget as HTMLDivElement;
-              const r = el.getBoundingClientRect();
-              el.style.setProperty("--lx", `${e.clientX - r.left}px`);
-              el.style.setProperty("--ly", `${e.clientY - r.top}px`);
-            }}
-          >
-            <div className="mnum">{m.n}</div>
-            <div className="micon">
-              <m.Icon width={26} height={26} />
-            </div>
-            <h3>{m.title}</h3>
-            <p>{m.body}</p>
-            <span className="tag">
-              <span className="pulse-dot" /> {m.tag}
-            </span>
-          </Item>
-        ))}
-      </div>
-    </Reveal>
+      </Reveal>
+      <ModulesShowcase />
+    </section>
   );
 }
 
@@ -673,6 +779,7 @@ function LaunchWire() {
       <div className="section-head">
         <div>
           <Item className="eyebrow" variants={fadeUp}>
+            <Flash width={15} height={15} />
             <span className="num">03</span> Launch wire
           </Item>
           <motion.h2 variants={fadeUp} style={{ margin: 0 }}>
@@ -775,6 +882,7 @@ function Method() {
       <div className="section-head">
         <div>
           <Item className="eyebrow" variants={fadeUp}>
+            <Compass width={15} height={15} />
             <span className="num">04</span> Method
           </Item>
           <motion.h2 variants={fadeUp} style={{ margin: 0 }}>
@@ -819,6 +927,7 @@ function Build() {
       <div className="section-head">
         <div>
           <Item className="eyebrow" variants={fadeUp}>
+            <CheckCircle width={15} height={15} />
             <span className="num">05</span> Build log
           </Item>
           <motion.h2 variants={fadeUp} style={{ margin: 0 }}>
@@ -876,6 +985,7 @@ function Privacy() {
       <div className="section-head">
         <div>
           <Item className="eyebrow" variants={fadeUp}>
+            <Lock width={15} height={15} />
             <span className="num">06</span> Your terms
           </Item>
           <motion.h2 variants={fadeUp} style={{ margin: 0 }}>
@@ -983,6 +1093,47 @@ function Footer() {
 /* ------------------------------------------------------------------ *
  *  Page
  * ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ *
+ *  Globe band — real ui-layouts Globe (cobe), re-tinted green.
+ * ------------------------------------------------------------------ */
+function GlobeBand() {
+  const points = [
+    "Every read is a public RPC call — anyone can reproduce it.",
+    "No private mempool, no insider feed, no paywalled index.",
+    "Same result from any device, in any region, at any hour.",
+  ];
+  return (
+    <Reveal className="globe-band" as="section">
+      <Item className="globe-copy" variants={fadeUp}>
+        <div className="eyebrow light">
+          <GlobeIcon width={15} height={15} /> <span className="num">·</span> In the open
+        </div>
+        <motion.h2 variants={fadeUp}>
+          Read from the <em>public chain</em>, wherever it flows.
+        </motion.h2>
+        <p>
+          Robinhood Chain records are global and permissionless. Hood Radar just
+          listens — the same swaps, the same factory events, visible to everyone,
+          resolved live no matter where you open it.
+        </p>
+        <ul className="globe-list">
+          {points.map((p) => (
+            <li key={p}>
+              <CheckCircle width={18} height={18} /> {p}
+            </li>
+          ))}
+        </ul>
+      </Item>
+      <Item className="globe-vis" variants={fadeUp}>
+        <Globe className="globe-canvas" />
+        <span className="globe-tag">
+          <span className="pulse-dot" /> 8 regions reading
+        </span>
+      </Item>
+    </Reveal>
+  );
+}
+
 export default function Page() {
   return (
     <>
@@ -994,6 +1145,7 @@ export default function Page() {
         <Hero />
         <Marquee />
         <Stats />
+        <GlobeBand />
         <Modules />
         <LaunchWire />
         <Method />

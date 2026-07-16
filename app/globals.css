@@ -75,7 +75,9 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   min-height: 100vh;
-  overflow-x: hidden;
+  /* `clip` (not `hidden`) stops horizontal scroll WITHOUT breaking the
+     position:sticky used by the nav and the horizontal-scroll modules. */
+  overflow-x: clip;
   cursor: none;
 }
 
@@ -1347,6 +1349,185 @@ a {
 }
 
 /* =========================================================================
+   Stat icon badge
+   ========================================================================= */
+.stat-ic {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: var(--green-tint);
+  color: var(--green-600);
+  border: 1px solid rgba(46, 125, 91, 0.18);
+  margin-bottom: 16px;
+}
+
+/* =========================================================================
+   Globe band (ui-layouts Globe, green-tinted)
+   ========================================================================= */
+.globe-band {
+  position: relative;
+  margin-top: 96px;
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 34px;
+  align-items: center;
+  border-radius: 30px;
+  padding: 50px 48px;
+  overflow: hidden;
+  background: linear-gradient(155deg, var(--green) 0%, #163529 62%, #11231b 100%);
+  box-shadow: var(--shadow-lg);
+}
+.globe-band::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-radial-gradient(
+    circle at 82% 50%,
+    transparent 0,
+    transparent 52px,
+    rgba(142, 202, 166, 0.06) 53px,
+    transparent 54px
+  );
+  pointer-events: none;
+}
+.eyebrow.light {
+  color: var(--green-300);
+}
+.eyebrow.light .num {
+  color: var(--honey);
+}
+.globe-copy {
+  position: relative;
+  z-index: 2;
+}
+.globe-band h2 {
+  font-family: var(--font-head);
+  font-size: clamp(28px, 3.4vw, 44px);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.02;
+  color: #f4f7ef;
+  margin-top: 14px;
+  max-width: 15ch;
+}
+.globe-band h2 em {
+  font-family: var(--font-edit);
+  font-style: italic;
+  font-weight: 400;
+  color: var(--honey);
+}
+.globe-band p {
+  margin-top: 16px;
+  color: rgba(238, 244, 232, 0.78);
+  font-size: 16px;
+  line-height: 1.6;
+  max-width: 46ch;
+}
+.globe-list {
+  list-style: none;
+  margin-top: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.globe-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: rgba(238, 244, 232, 0.92);
+  font-size: 15px;
+  line-height: 1.45;
+}
+.globe-list li svg {
+  color: var(--green-300);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.globe-vis {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+}
+.globe-canvas {
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+  filter: drop-shadow(0 34px 60px rgba(0, 0, 0, 0.45));
+}
+.globe-tag {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: #eef4e8;
+  background: rgba(17, 35, 27, 0.55);
+  border: 1px solid rgba(142, 202, 166, 0.28);
+  border-radius: 999px;
+  padding: 7px 12px;
+  backdrop-filter: blur(6px);
+}
+
+/* =========================================================================
+   Horizontal-scroll modules (motion + lenis, ui-layouts pattern)
+   ========================================================================= */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+.mods-h {
+  position: relative;
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+}
+.mods-h-sticky {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+}
+.mods-h-hint {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-code);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 26px;
+}
+.mods-h-hint svg {
+  color: var(--green-600);
+}
+.mods-h-track {
+  list-style: none;
+  display: flex;
+  gap: 22px;
+  padding: 0 max(24px, calc((100vw - 1180px) / 2));
+  will-change: transform;
+}
+.hcard {
+  flex: 0 0 366px;
+  width: 366px;
+  min-height: 320px;
+  margin: 0;
+}
+
+/* =========================================================================
    Responsive
    ========================================================================= */
 @media (max-width: 940px) {
@@ -1384,6 +1565,25 @@ a {
   }
   .wire-row {
     border-right: none;
+  }
+  .globe-band {
+    grid-template-columns: 1fr;
+    padding: 40px 26px;
+    text-align: center;
+  }
+  .globe-band h2,
+  .globe-band p {
+    max-width: 100%;
+  }
+  .globe-list {
+    text-align: left;
+    max-width: 420px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .globe-canvas {
+    max-width: 320px;
+    margin-top: 12px;
   }
 }
 @media (max-width: 620px) {
