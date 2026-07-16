@@ -9,6 +9,10 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "cobe": "^2.0.1",
+    "framer-motion": "^12.42.2",
+    "iconoir-react": "^7.11.1",
+    "motion": "^12.42.2",
     "next": "^14.2.35",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
