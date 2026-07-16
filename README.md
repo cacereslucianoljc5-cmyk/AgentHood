@@ -1,53 +1,53 @@
-# AgentHood — Generador de imágenes con IA
+# Hood Radar — landing
 
-Web para crear imágenes a partir de texto, con estética neón verde. Escribe una
-descripción y AgentHood genera la imagen al instante.
+Landing page for an on-chain research terminal for **Robinhood Chain** token
+launches, inspired by the functionality of [ponsradar.com](https://ponsradar.com).
+It presents the terminal's nine live modules (launch wire, token radar, live
+flow, distribution, creator trail, trade tape…) and includes a **live launch
+wire** that reads real new pools from public indexers.
 
 - **Stack:** Next.js 14 (App Router) + TypeScript + React 18
-- **Motor de IA:** [Pollinations.ai](https://pollinations.ai) (gratis, sin API
-  key, imágenes sin marca de agua)
-- **Sin variables de entorno ni secretos** — se despliega tal cual en Vercel.
+- **Motion:** [framer-motion](https://www.framer.com/motion/) — each section
+  reveals element-by-element on scroll, big numbers count up.
+- **Icons:** [iconoir-react](https://iconoir.com) (a deliberately less-common
+  set).
+- **Type:** Bricolage Grotesque (display), Instrument Serif (italic accent),
+  Instrument Sans (body) and JetBrains Mono (data) via `next/font`.
 
-## Cómo funciona
+## Design
 
-- El navegador llama a la ruta interna `/api/image`, que devuelve una URL de
-  imagen de Pollinations (modelo `flux`, sin logo).
-- Los límites diarios se controlan en 2 sitios:
-  - **Servidor** (`lib/ratelimit.ts`): tope por IP en memoria (backstop).
-  - **Cliente** (`app/page.tsx`): contador visible guardado en `localStorage`.
+A soft **"botanical terminal"** palette instead of the usual dark-neon crypto
+look, built on the 70 / 20 / 10 rule:
 
-## Desarrollo
+- **70 %** warm paper neutrals (background, cards, borders, ink text)
+- **20 %** forest green (brand, logo, primary actions, "up")
+- **10 %** honey amber + clay (section numerals, highlights, "down")
+
+Ambient background is a subtle radar sweep + drifting soft blobs; the cursor is
+an easing radar dot with a soft glow. All effects respect
+`prefers-reduced-motion`.
+
+## Develop
 
 ```bash
 npm install
 npm run dev     # http://localhost:3000
-npm run build   # verifica que compila
+npm run build   # production build
 ```
 
-## Personalizar
-
-- **Límite diario:** `lib/ratelimit.ts` → `LIMITS.image` y
-  `app/page.tsx` → `IMAGE_LIMIT` (mantén ambos números iguales).
-- **Colores / tema:** `app/globals.css`, bloque `:root` (`--neon`, `--bg`, ...).
-- **Textos:** título y descripción en `app/layout.tsx`; wordmark, tagline y
-  footer en `app/page.tsx`.
-- **Modelo de imagen:** `app/api/image/route.ts`, parámetro `model` (`flux` o
-  `turbo`).
-- **Imágenes de marca:** reemplaza `public/mascot.png` y `public/wordmark.jpg`
-  manteniendo los nombres.
-
-## Estructura
+## Structure
 
 ```
 app/
-  layout.tsx           metadatos + <html>
-  globals.css          tema neón
-  page.tsx             UI del generador de imágenes
-  api/image/route.ts   endpoint de imágenes + rate limit
-lib/
-  ratelimit.ts         límite diario por IP
+  layout.tsx           fonts + metadata
+  globals.css          botanical design system
+  page.tsx             landing (nav, hero, stats, 9 modules, live wire,
+                       method, build log, privacy, CTA, footer)
+  api/tokens/route.ts  live token feed (GeckoTerminal / on-chain / DexScreener)
+  api/token-image      logo image proxy
 public/
-  favicon.svg
-  mascot.png           avatar / logo
-  wordmark.jpg         logo de texto
+  logo.png             green leaf mark
 ```
+
+> Independent research software. It does not custody assets, execute trades, or
+> provide investment advice. Not affiliated with Pons or Robinhood.
