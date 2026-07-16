@@ -68,13 +68,15 @@ export default function Globe({
       ],
     });
 
-    // cobe v2 has no onRender: drive the rotation ourselves.
+    // cobe v2 has no onRender: drive the rotation ourselves — unless the
+    // visitor prefers reduced motion, in which case the globe stays still.
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const loop = () => {
       phi += 0.0035;
       globe.update({ phi });
       raf = requestAnimationFrame(loop);
     };
-    raf = requestAnimationFrame(loop);
+    if (!still) raf = requestAnimationFrame(loop);
 
     const onResize = () => {
       width = canvas.offsetWidth || width;

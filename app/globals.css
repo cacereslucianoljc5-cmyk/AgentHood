@@ -9,21 +9,21 @@
 
 :root {
   /* ---- 70% · neutrals (warm paper) ---- */
-  --paper: #f4f1e8;
-  --paper-2: #ece7d8;
-  --card: #fbfaf4;
-  --card-2: #f2eee2;
-  --line: #e4dfce;
-  --line-strong: #d0c8b1;
+  --paper: #eef1e8;
+  --paper-2: #e6e9db;
+  --card: #faf9f3;
+  --card-2: #edf0e3;
+  --line: #e0e1d1;
+  --line-strong: #cdccb4;
   --ink: #19231b;
   --ink-soft: #3a473c;
-  --muted: #69735f;
-  --faint: #9aa48c;
+  --muted: #5f6854;
+  --faint: #68715b;
 
   /* ---- 20% · forest green (brand) ---- */
   --green: #1e4d3a;
   --green-700: #245a43;
-  --green-600: #2e7d5b;
+  --green-600: #2a7454;
   --green-500: #3e9b6e;
   --green-300: #8ecaa6;
   --green-glow: rgba(46, 125, 91, 0.18);
@@ -32,6 +32,8 @@
   /* ---- 10% · honey accent + clay negative ---- */
   --honey: #e0a24e;
   --honey-deep: #c07f27;
+  /* AA-legible honey for small text/numerals on light surfaces */
+  --honey-text: #8a5c12;
   --clay: #bd5238;
 
   --radius: 22px;
@@ -100,6 +102,22 @@ a {
 ::selection {
   background: var(--green-300);
   color: var(--green);
+}
+
+/* Keyboard focus — visible ring (the mouse cursor is hidden, so this matters). */
+:focus-visible {
+  outline: 2.5px solid var(--green-500);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+.btn:focus-visible,
+.nav-links a:focus-visible {
+  outline-offset: 4px;
+}
+/* Anything focused by keyboard should show the native cursor context too. */
+a:focus-visible,
+button:focus-visible {
+  cursor: auto;
 }
 
 /* =========================================================================
@@ -330,7 +348,7 @@ a {
   color: var(--green-600);
 }
 .eyebrow .num {
-  color: var(--honey-deep);
+  color: var(--honey-text);
 }
 
 /* =========================================================================
@@ -814,7 +832,7 @@ a {
 }
 .stat .big .u {
   font-size: 0.42em;
-  color: var(--honey-deep);
+  color: var(--honey-text);
   margin-left: 4px;
   letter-spacing: 0;
 }
@@ -878,7 +896,7 @@ a {
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.1em;
-  color: var(--honey-deep);
+  color: var(--honey-text);
 }
 .module .micon {
   margin: 14px 0 16px;
@@ -920,7 +938,7 @@ a {
   padding: 5px 11px;
 }
 .module .tag.verify {
-  color: var(--honey-deep);
+  color: var(--honey-text);
   background: rgba(224, 162, 78, 0.14);
 }
 
@@ -1141,7 +1159,7 @@ a {
 }
 .build-check.verify {
   background: rgba(224, 162, 78, 0.14);
-  color: var(--honey-deep);
+  color: var(--honey-text);
   border-color: rgba(224, 162, 78, 0.3);
 }
 .build-row .bt {
@@ -1158,7 +1176,7 @@ a {
   color: var(--green-600);
 }
 .build-row .bs.verify {
-  color: var(--honey-deep);
+  color: var(--honey-text);
 }
 
 /* =========================================================================
