@@ -1,6 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { NumberTicker } from "./components/NumberTicker";
+import GradientText from "./components/GradientText";
+import RippleCursor from "./components/RippleCursor";
 
 /* ============================================================================
    StockSprout — tokenized stock packs on Robinhood Chain.
@@ -535,38 +538,6 @@ function Topbar() {
   );
 }
 
-// ---------- Animated count-up (jackpot + stats) -----------------------------
-function CountUp({ value, prefix = "", decimals = 0 }: { value: number; prefix?: string; decimals?: number }) {
-  const [shown, setShown] = useState(value);
-  const ref = useRef(value);
-  useEffect(() => {
-    const from = ref.current;
-    const to = value;
-    if (from === to) return;
-    let raf = 0;
-    const start = performance.now();
-    const dur = 700;
-    const tick = (now: number) => {
-      const p = Math.min(1, (now - start) / dur);
-      const eased = 1 - Math.pow(1 - p, 3);
-      setShown(from + (to - from) * eased);
-      if (p < 1) raf = requestAnimationFrame(tick);
-      else ref.current = to;
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [value]);
-  return (
-    <>
-      {prefix}
-      {shown.toLocaleString("en-US", {
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals,
-      })}
-    </>
-  );
-}
-
 // ============================================================================
 // Hero
 // ============================================================================
@@ -579,7 +550,7 @@ function Hero({ onBrowse }: { onBrowse: () => void }) {
         <IconSpark size={14} /> Real tokenized equities · live on-chain
       </div>
       <h1>
-        Open. <span className="grad">Own.</span> Invest.
+        Open. <GradientText animationSpeed={6}>Own.</GradientText> Invest.
       </h1>
       <p className="sub">
         Every <b>StockSprout</b> holds real tokenized stocks. Own pieces of the
@@ -611,7 +582,7 @@ function Hero({ onBrowse }: { onBrowse: () => void }) {
         </div>
         <div className="hstat jackpot">
           <div className="hstat-num">
-            <IconTrophy size={20} /> $<CountUp value={v.jackpot} />
+            <IconTrophy size={20} /> $<NumberTicker value={v.jackpot} />
           </div>
           <div className="hstat-lbl">Live jackpot vault</div>
         </div>
@@ -867,6 +838,8 @@ function Packs({
 }) {
   const { addr, connect } = useWallet();
   const [opening, setOpening] = useState<Pack | null>(null);
+  // Aceternity "focus cards" technique: hovering one card dims/blurs the rest.
+  const [hovered, setHovered] = useState<number | null>(null);
   const secRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -910,9 +883,13 @@ function Packs({
         title="Five curated portfolios."
         sub="Real companies. One reveal away."
       />
-      <div className="pack-grid">
-        {PACKS.map((p) => (
-          <div className="pack-card" key={p.id}>
+      <div className="pack-grid" onMouseLeave={() => setHovered(null)}>
+        {PACKS.map((p, i) => (
+          <div
+            className={`pack-card ${hovered !== null && hovered !== i ? "dim" : ""}`}
+            key={p.id}
+            onMouseEnter={() => setHovered(i)}
+          >
             <div className={`pack-status ${p.status}`}>
               {p.status === "live" ? "Live" : "Coming soon"}
             </div>
@@ -1364,6 +1341,7 @@ export default function Page() {
 
   return (
     <>
+      <RippleCursor />
       <BgFX />
       <Topbar />
       <TickerMarquee prices={prices} changes={changes} />

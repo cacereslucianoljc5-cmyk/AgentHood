@@ -589,11 +589,50 @@ b {
   letter-spacing: 1px;
 }
 
+/* ---- Cursify ripple cursor (green, subtle) ---- */
+.ripple-cursor-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 9999;
+}
+.ripple-cursor-dot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(111, 208, 138, 0.55), rgba(53, 201, 179, 0.25) 55%, transparent 72%);
+  box-shadow: 0 0 12px rgba(111, 208, 138, 0.5);
+  animation: ripple-cursor 0.9s ease-out forwards;
+}
+@keyframes ripple-cursor {
+  0% {
+    opacity: 0.7;
+    transform: translate(-50%, -50%) scale(0.4);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.6);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ripple-cursor-dot {
+    animation: none;
+    display: none;
+  }
+}
+
 /* ============================== Packs ============================== */
 .pack-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 18px;
+}
+/* Aceternity focus-cards: non-hovered cards blur + recede */
+.pack-card.dim {
+  filter: blur(2px);
+  transform: scale(0.97);
+  opacity: 0.72;
 }
 .pack-card {
   position: relative;
